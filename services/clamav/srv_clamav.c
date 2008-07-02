@@ -28,7 +28,7 @@
 #include "srv_clamav.h"
 #include "filetype.h"
 #include "ci_threads.h"
-#include "include/commands.h"
+#include "commands.h"
 #include <errno.h>
 
 #ifdef HAVE_LIBCLAMAV_09X
