@@ -91,8 +91,32 @@ AC_MSG_RESULT(no),
 
 CFLAGS=$OLD_CFLAGS
 
+libdb="yes"
+AC_ARG_WITH(libdb,
+[  --with-bdb        Where to find Berkeley DB library ],
+[ case "$withval" in
+    yes)
+         libdb="yes"
+    ;;
+    no )
+         libdb="no"
+    ;;
+    * )
+        libdb="yes";
+        libdbinc=-I"$withval"/include
+        libdblib=-L"$withval"/lib
+    ;;
+  esac
+],
+)
+
+AC_SUBST(libdbinc)
+AC_SUBST(libdblib)
+
+
 # Now determine which modules will going to build .....
 
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
+AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
 
 AC_OUTPUT([Makefile services/Makefile services/clamav/Makefile services/url_check/Makefile modules/Makefile])
