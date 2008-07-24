@@ -1,9 +1,9 @@
-#include <db.h>
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
 #include <stdio.h>
 #include <fcntl.h>
+#include "sguardDB.h"
 
 #define log_printf(i, args... ) printf(args)
 
@@ -13,21 +13,9 @@ DB *DomainsDB = NULL;
 DB *UrlsDB = NULL;
 */
 
-typedef struct sg_db{
-  DB_ENV *env_db;
-  DB *domains_db;
-  DB *urls_db;
-} sg_db_t;
-
-sg_db_t *l_db;
 
 #define CREATE_FLAGS 0664
-#define DATABASE_DIR    "/home/tsantila/sources/squidGuard-1.2.10/BUILD/squidGuard/db/blacklists/adult/"
-#define DATABASEHOME  "/home/tsantila/sources/squidGuard-1.2.10/BUILD/squidGuard/db/blacklists/adult/"
 #define TABLE        NULL
-
-
-void closeDB();
 
 int compare_str(DB *dbp, const DBT *a, const DBT *b){
 
@@ -148,7 +136,6 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 		int (*bt_compare_fcn)(DB *, const DBT *, const DBT *) ){
 	int ret;
 	DB *dbp = NULL;
-	int flags;
 
 	if ((ret = db_create(&dbp, dbenv , 0)) != 0) {
 		log_printf(2, "db_create: %s\n", db_strerror(ret));
@@ -175,7 +162,6 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 
 
 sg_db_t *sg_init_db(char *home){
-	int ret = 0;
 	sg_db_t *sg_db=(sg_db_t *)malloc(sizeof(sg_db_t));
 
 	sg_db->env_db=NULL;
@@ -318,6 +304,12 @@ int iterate_db(DB *dDB, int (*action)(char *,int,char *,int)){
 
 
 /**************************************************************/
+#if 0
+
+
+sg_db_t *l_db;
+#define DATABASE_DIR    "/home/tsantila/sources/squidGuard-1.2.10/BUILD/squidGuard/db/blacklists/adult/"
+#define DATABASEHOME  "/home/tsantila/sources/squidGuard-1.2.10/BUILD/squidGuard/db/blacklists/adult/"
 
 int initDB(int  create){
   l_db=sg_init_db(DATABASEHOME);
@@ -350,3 +342,4 @@ int iterateUrls(int (*action)(char *,int,char *,int)){
 }
 
 
+#endif
