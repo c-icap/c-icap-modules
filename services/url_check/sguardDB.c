@@ -212,20 +212,30 @@ void sg_close_db(sg_db_t *sg_db){
   }
 }
 
-
-
 int compdomainkey(char *dkey,char *domain,int dkey_len){
   int domain_len=strlen(domain);
-  char *domain_pos;
-  char akey[1024];
-  strncpy(akey,dkey,dkey_len);
-  akey[dkey_len]='\0';
-  if(domain_len<dkey_len)
-    return 1;
-  domain_pos=domain+(domain_len-dkey_len);
-  return strncmp(dkey,domain_pos,dkey_len);
-}
+  char *d_end,*k_end,*domain_pos;
+  printf("check names: %s, %s\n",dkey,domain);
+  printf( "dkey len: %d domain len :%d\n", dkey_len, domain_len);
 
+  if(domain_len<dkey_len-1)
+    return 1;
+
+  k_end=dkey+dkey_len-1;
+  d_end=domain+domain_len-1;
+  printf( "%s %s \n", k_end,d_end);
+  while(d_end>domain && k_end>dkey) {
+      if(*d_end!=*k_end)
+            return d_end-k_end;
+       d_end--;
+       k_end--;
+  }
+  if(*k_end=='.' && *d_end=='.')
+        return 0;
+  if(d_end==domain && *(--k_end)=='.')
+        return 0;
+  return 1;
+}
 
 int compurlkey(char *ukey,char *url,int ukey_len){
   return strncmp(ukey,url,ukey_len);
