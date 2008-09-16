@@ -22,11 +22,15 @@
 #include "header.h"
 #include "body.h"
 #include "simple_api.h"
+#include "lookup_table.h"
 #include "debug.h"
 #include "sguardDB.h"
 
 /*Structs for this module */
 enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
+
+#define CHECK_HOST 0x1
+#define CHECK_URL  0x2
 
 struct http_info {
   int http_major;
@@ -37,11 +41,12 @@ struct http_info {
 				   include page arguments */
 };
 
-enum lookupdb_types {DB_INTERNAL,DB_SG};
+enum lookupdb_types {DB_INTERNAL, DB_SG, DB_LOOKUP};
 
 struct lookup_db {
   char *name;
   int type;
+  unsigned int check;
   void *db_data;
   void * (*load_db)(struct lookup_db *db, char *path);
   int    (*lookup_db)(void *db_data, struct http_info *http_info);
@@ -53,6 +58,7 @@ struct lookup_db *LOOKUP_DBS = NULL;
 
 int add_lookup_db(struct lookup_db *ldb);
 struct lookup_db *new_lookup_db(char *name, int type,
+				unsigned int check,
 				void *(load_db)(struct lookup_db *ldb, char *path),
 				int (lookup_db)(void *db_data, 
 						struct http_info *http_info),
@@ -97,10 +103,12 @@ struct profile *profile_search(char *name);
 
 /*Config functions*/
 int cfg_load_sg_db(char *directive, char **argv, void *setdata);
+int cfg_load_lt_db(char *directive, char **argv, void *setdata);
 int cfg_profile(char *directive, char **argv, void *setdata);
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
   {"LoadSquidGuardDB", NULL, cfg_load_sg_db, NULL},
+  {"LookupTableDB", NULL, cfg_load_lt_db, NULL},
   {"Profile", NULL, cfg_profile, NULL},
   {NULL, NULL, NULL, NULL}
 };
@@ -139,7 +147,7 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
      ci_service_set_xopts(srv_xdata, xops);
 
      /*Add internal database lookups*/
-     int_db = new_lookup_db("ALL", DB_INTERNAL, NULL,
+     int_db = new_lookup_db("ALL", DB_INTERNAL, CHECK_HOST, NULL,
 			    all_lookup_db,
 			    NULL);
      if(int_db)
@@ -221,6 +229,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      return 1;
 }
 
+int profile_access(struct profile *prof, struct http_info *info);
 int check_destination(struct http_info *httpinf)
 {
   struct profile *profile;
@@ -347,6 +356,7 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
 
 struct lookup_db *new_lookup_db(char *name,
 				int type,
+				unsigned int check,
 				void *(load_db)(struct lookup_db *,char *path),
 				int (lookup_db)(void *db_data, 
 						struct http_info *http_info),
@@ -360,6 +370,7 @@ struct lookup_db *new_lookup_db(char *name,
 
   ldb->name = strdup(name);
   ldb->type = type;
+  ldb->check = check;
   ldb->db_data = NULL;
   ldb->load_db = load_db;
   ldb->lookup_db = lookup_db;
@@ -574,12 +585,83 @@ int cfg_load_sg_db(char *directive, char **argv, void *setdata)
   }
 
 
-  ldb = new_lookup_db(argv[0], DB_SG, 
+  ldb = new_lookup_db(argv[0], 
+		      DB_SG, 
+		      CHECK_HOST|CHECK_URL,
 		      sg_load_db,
 		      sg_lookup_db,
 		      sg_release_db);
   if(ldb) {
     if(!ldb->load_db(ldb, argv[1])) {
+      free(ldb);
+      return 0;
+    }
+    return add_lookup_db(ldb);
+  }
+  
+  return 0;
+}
+
+
+/*****************************************************************/
+/* c-icap lookup table databases                                 */
+
+
+void *lt_load_db(struct lookup_db *db, char *path)
+{
+  struct ci_lookup_table *lt_db;
+  lt_db = ci_lookup_table_create(path);
+  if(!lt_db->open(lt_db)) {
+    ci_lookup_table_destroy(lt_db);
+  }
+  return (db->db_data = (void *)lt_db);
+}
+
+int lt_lookup_db(void *db_data, struct http_info *http_info)
+{
+  void **vals=NULL;
+  void *ret;
+  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)db_data;
+  ret = lt_db->search(lt_db, http_info->site, &vals);
+  if(vals)
+    lt_db->release_result(lt_db,vals);
+  return (ret != NULL);
+}
+
+void lt_release_db(void *db_data)
+{
+  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)db_data;
+  lt_db->close(lt_db);
+}
+
+
+int cfg_load_lt_db(char *directive, char **argv, void *setdata) 
+{
+  struct lookup_db *ldb;
+  unsigned int check;
+  if (argv == NULL || argv[0] == NULL || argv[1] == NULL || argv[2] == NULL) {
+    ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
+    return 0;
+  }
+
+  if(strcmp(argv[1],"host")==0)
+    check = CHECK_HOST;
+  else if(strcmp(argv[1],"url")==0)
+    check = CHECK_URL;
+  else {
+    ci_debug_printf(1, "Wrong argument %s for directive %s\n", 
+		    argv[1], directive);
+    return 0;
+  }
+  
+  ldb = new_lookup_db(argv[0],
+		      DB_LOOKUP, 
+		      CHECK_URL,
+		      lt_load_db,
+		      lt_lookup_db,
+		      lt_release_db);
+  if(ldb) {
+    if(!ldb->load_db(ldb, argv[2])) {
       free(ldb);
       return 0;
     }
