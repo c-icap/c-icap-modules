@@ -29,16 +29,29 @@
 /*Structs for this module */
 enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
 
-#define CHECK_HOST 0x1
-#define CHECK_URL  0x2
+#define CHECK_HOST     0x01
+#define CHECK_URL      0x02
+#define CHECK_DOMAIN   0x04
+#define CHECK_SRV_IP   0x08
+#define CHECK_SRV_NET  0x16
+
+#define MAX_URL_SIZE  65536
+#define MAX_PAGE_SIZE (MAX_URL_SIZE - CI_MAXHOSTNAMELEN)
+
+const char *protos[] = {"", "http", "https", "ftp", NULL};
+enum proto {UNKNOWN=0, HTTP, HTTPS, FTP};
 
 struct http_info {
-  int http_major;
-  int http_minor;
-  int method;
-  char site[CI_MAXHOSTNAMELEN + 1];
-  char page[1024];              /* I think it is enough, does not 
-				   include page arguments */
+    int http_major;
+    int http_minor;
+    int method;
+    unsigned int port;
+    int proto;
+    char host[CI_MAXHOSTNAMELEN + 1];
+    char server_ip[64];                   /*I think ipv6 address needs about 32 bytes*/
+    char site[CI_MAXHOSTNAMELEN + 1];
+    char url[MAX_URL_SIZE];              /* I think it is enough, does not 
+					     include page arguments */
 };
 
 enum lookupdb_types {DB_INTERNAL, DB_SG, DB_LOOKUP};
@@ -49,8 +62,8 @@ struct lookup_db {
   unsigned int check;
   void *db_data;
   void * (*load_db)(struct lookup_db *db, char *path);
-  int    (*lookup_db)(void *db_data, struct http_info *http_info);
-  void   (*release_db)(void *db_data);
+  int    (*lookup_db)(struct lookup_db *db, struct http_info *http_info);
+  void   (*release_db)(struct lookup_db *db);
   struct lookup_db *next;
 };
 
@@ -59,13 +72,13 @@ struct lookup_db *LOOKUP_DBS = NULL;
 int add_lookup_db(struct lookup_db *ldb);
 struct lookup_db *new_lookup_db(char *name, int type,
 				unsigned int check,
-				void *(load_db)(struct lookup_db *ldb, char *path),
-				int (lookup_db)(void *db_data, 
+				void *(*load_db)(struct lookup_db *ldb, char *path),
+				int (*lookup_db)(struct lookup_db *ldb,
 						struct http_info *http_info),
-				void (release_db)(void *db_data)
+				void (*release_db)(struct lookup_db *ldb)
 				);
 /* ALL lookup_db functions*/
-int all_lookup_db(void *db_data, struct http_info *http_info);
+int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info);
 
 
 #define DB_ERROR -1
@@ -140,7 +153,7 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
 {
      unsigned int xops;
      struct lookup_db *int_db;
-     printf("Initialization of url_check module......\n");
+     ci_debug_printf(2, "Initialization of url_check module......\n");
      ci_service_set_preview(srv_xdata, 0);
      xops = CI_XCLIENTIP | CI_XSERVERIP;
      xops |= CI_XAUTHENTICATEDUSER | CI_XAUTHENTICATEDGROUPS;
@@ -174,40 +187,91 @@ void url_check_release_data(void *data)
      free(uc);                  /*Return object to pool..... */
 }
 
+int get_protocol(char *str,int size) 
+{
+    int i;
+    for(i=0; protos[i]!=NULL; i++) {
+	if(strncmp(str,protos[i],size)==0)
+	    return i;
+    }
+    return 0;
+}
 
 int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
                   struct http_info *httpinf)
 {
-     char *str;
-     int i;
+    char *str, *tmp;
+     int i, proxy_mode=0;
 
      /*Now get the site name */
      str = ci_headers_value(req_header, "Host");
      if (str) {
-          strncpy(httpinf->site, str, CI_MAXHOSTNAMELEN);
+          strncpy(httpinf->host, str, CI_MAXHOSTNAMELEN);
           httpinf->site[CI_MAXHOSTNAMELEN] = '\0';
      }
      else
-          httpinf->site[0] = '\0';
-
+          httpinf->host[0] = '\0';
+     /*
+       When x-server-ip implemented in c-icap (and squid3)
+       strcpy(http->inf,req->xserverip);
+       else do a getipbyname
+     */
+     
      str = req_header->headers[0];
      if (str[0] == 'g' || str[0] == 'G')        /*Get request.... */
-          httpinf->method = HTTP_GET;
+	 httpinf->method = HTTP_GET;
      else if (str[0] == 'p' || str[0] == 'P')   /*post request.... */
-          httpinf->method = HTTP_POST;
+	 httpinf->method = HTTP_POST;
      else {
-          httpinf->method = HTTP_UNKNOWN;
-          return 0;
+	 httpinf->method = HTTP_UNKNOWN;
+	 return 0;
      }
      if ((str = strchr(str, ' ')) == NULL) {    /*The request must have the form:GETPOST page HTTP/X.X */
           return 0;
      }
      while (*str == ' ')
           str++;
-     i = 0;
-     while (*str != ' ' && *str != '\0' && i < 1022)    /*copy page to the struct. */
-          httpinf->page[i++] = *str++;
-     httpinf->page[i] = '\0';
+
+
+     /*here we are at the beggining of the URL. If we are in a reqmod request the
+       URL propably has the form http://site[:port]/page or just /page 
+       (where, in squid transparent mode?)
+      */
+     /*check if we are in the form proto://url
+      */
+     httpinf->url[0]='\0';
+     if ((tmp=strstr(str,"://"))) {	 
+	 proxy_mode=1;
+	 httpinf->proto = get_protocol(str,str-tmp);
+	 str = tmp+3;
+	 i=0;
+	 while(*str!=':' && *str!= '/' && i < CI_MAXHOSTNAMELEN){
+	     httpinf->site[i] = *str;
+	     httpinf->url[i] = *str;
+	     i++;
+	     str++;
+	 }
+	 httpinf->site[i] = '\0';
+	 httpinf->url[i] = '\0';
+	 if(*str==':'){
+	     httpinf->port = strtol(str+1,&tmp,10);
+	     if(*tmp!='/') 
+		 return 0;
+	     /*Do we want the port contained into URL? if no:*/
+	     /*str = tmp;*/
+	 }
+     }
+     else {
+	 strcpy(httpinf->url, httpinf->host);
+	 strcpy(httpinf->site, httpinf->host);
+	 httpinf->proto = UNKNOWN;
+	 httpinf->port = 80;
+     }
+
+     i = strlen(httpinf->url);
+     while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE)    /*copy page to the struct. */
+          httpinf->url[i++] = *str++;
+     httpinf->url[i] = '\0';
 
      if (*str != ' ') {         /*Where is the protocol info????? */
           return 0;
@@ -234,8 +298,8 @@ int check_destination(struct http_info *httpinf)
 {
   struct profile *profile;
   int ret;
-  ci_debug_printf(9, "URL  to host %s\n", httpinf->site);
-  ci_debug_printf(9, "URL  page %s\n", httpinf->page);
+  ci_debug_printf(9, "SITE: %s\n", httpinf->site);
+  ci_debug_printf(9, "URL: %s\n", httpinf->url);
   
   profile = profile_search("default");
   
@@ -268,7 +332,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      get_http_info(req, req_header, &httpinf);
 
      ci_debug_printf(9, "URL  to host %s\n", httpinf.site);
-     ci_debug_printf(9, "URL  page %s\n", httpinf.page);
+     ci_debug_printf(9, "URL  page %s\n", httpinf.url);
 
      allow = check_destination(&httpinf);
 
@@ -357,10 +421,10 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
 struct lookup_db *new_lookup_db(char *name,
 				int type,
 				unsigned int check,
-				void *(load_db)(struct lookup_db *,char *path),
-				int (lookup_db)(void *db_data, 
+				void *(*load_db)(struct lookup_db *,char *path),
+				int (*lookup_db)(struct lookup_db *ldb, 
 						struct http_info *http_info),
-				void (release_db)(void *db_data)
+				void (*release_db)(struct lookup_db *ldb)
 				)
 {
   struct lookup_db *ldb = malloc(sizeof(struct lookup_db));
@@ -501,7 +565,7 @@ int profile_access(struct profile *prof, struct http_info *info)
       return DB_ERROR;
     }
 
-    if(db->lookup_db(db->db_data, info))
+    if(db->lookup_db(db, info))
       return adb->allow;
     adb=adb->next;
   }
@@ -556,20 +620,18 @@ void *sg_load_db(struct lookup_db *db, char *path)
   return (db->db_data = (void *)sg_db);
 }
 
-int sg_lookup_db(void *db_data, struct http_info *http_info)
+int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
-  char url[1024];
-  sg_db_t *sg_db = (sg_db_t *)db_data;
+  sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   if( sg_domain_exists(sg_db, http_info->site) )
     return 1;
 
-  snprintf(url,1023,"%s%s",http_info->site,http_info->page);
-  return sg_url_exists(sg_db,url);
+  return sg_url_exists(sg_db,http_info->url);
 }
 
-void sg_release_db(void *db_data)
+void sg_release_db(struct lookup_db *ldb)
 {
-  sg_db_t *sg_db = (sg_db_t *)db_data;
+  sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   sg_close_db(sg_db);
   free(sg_db);
 }
@@ -617,20 +679,56 @@ void *lt_load_db(struct lookup_db *db, char *path)
   return (db->db_data = (void *)lt_db);
 }
 
-int lt_lookup_db(void *db_data, struct http_info *http_info)
+int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   void **vals=NULL;
-  void *ret;
-  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)db_data;
-  ret = lt_db->search(lt_db, http_info->site, &vals);
+  void *ret = NULL;
+  char *s;
+  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
+  switch(ldb->check) {
+  case CHECK_HOST:
+      ret = lt_db->search(lt_db, http_info->site, &vals);
+      break;
+  case CHECK_DOMAIN:
+      s = http_info->site;
+      s--;   /* :-) */
+      do {
+	  s++;
+	  ret = lt_db->search(lt_db, s, &vals);
+      } while ((s=strchr(s, '.')) && !ret);
+      break;
+  case CHECK_URL:
+      /*for www.site.com/to/path/page.html need to test:
+
+	www.site.com/to/path/page.html
+	site.com/to/path/page.html
+	com/to/path/page.html
+	www.site.com/to/path/
+	www.site.com/to/
+	www.site.com/
+	site.com/to/path/
+	site.com/to/
+	site.com/
+	com/to/path/
+	com/to/
+	com/
+
+       */
+      ret = lt_db->search(lt_db, s, &vals);
+  case CHECK_SRV_IP:
+  case CHECK_SRV_NET:
+  default:
+      /*nothing*/
+      break;
+  }
   if(vals)
     lt_db->release_result(lt_db,vals);
   return (ret != NULL);
 }
 
-void lt_release_db(void *db_data)
+void lt_release_db(struct lookup_db *ldb)
 {
-  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)db_data;
+  struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
   lt_db->close(lt_db);
 }
 
@@ -648,6 +746,12 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
     check = CHECK_HOST;
   else if(strcmp(argv[1],"url")==0)
     check = CHECK_URL;
+  else if(strcmp(argv[1],"domain")==0)
+    check = CHECK_DOMAIN;
+  else if(strcmp(argv[1],"server_ip")==0)
+      check = CHECK_SRV_IP;
+  else if(strcmp(argv[1],"server_net")==0)
+      check = CHECK_SRV_NET;
   else {
     ci_debug_printf(1, "Wrong argument %s for directive %s\n", 
 		    argv[1], directive);
@@ -656,7 +760,7 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
   
   ldb = new_lookup_db(argv[0],
 		      DB_LOOKUP, 
-		      CHECK_URL,
+		      check,
 		      lt_load_db,
 		      lt_lookup_db,
 		      lt_release_db);
@@ -673,7 +777,7 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
 
 /**********************************************************************/
 /* Other */
-int all_lookup_db(void *db_data, struct http_info *http_info)
+int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   return 1;
 }
