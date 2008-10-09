@@ -679,11 +679,24 @@ void *lt_load_db(struct lookup_db *db, char *path)
   return (db->db_data = (void *)lt_db);
 }
 
+char *find_last(char *s,char *e,const char *accept)
+{
+  char *p;
+  p = e;
+  while(p >= s) {
+      if(strchr(accept, *p))
+	  return p;
+      p--;
+  }
+  return NULL;
+}
+
 int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   void **vals=NULL;
   void *ret = NULL;
-  char *s;
+  char *s,*e, *end, store;
+  int len;
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
   switch(ldb->check) {
   case CHECK_HOST:
@@ -695,28 +708,51 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
       do {
 	  s++;
 	  ret = lt_db->search(lt_db, s, &vals);
-      } while ((s=strchr(s, '.')) && !ret);
+	  lt_db->release_result(lt_db, &vals);
+      } while (!ret && (s=strchr(s, '.')));
       break;
   case CHECK_URL:
       /*for www.site.com/to/path/page.html need to test:
 
 	www.site.com/to/path/page.html
-	site.com/to/path/page.html
-	com/to/path/page.html
 	www.site.com/to/path/
 	www.site.com/to/
 	www.site.com/
+
+	site.com/to/path/page.html
 	site.com/to/path/
 	site.com/to/
 	site.com/
+
+	com/to/path/page.html
 	com/to/path/
 	com/to/
 	com/
-
        */
-      ret = lt_db->search(lt_db, s, &vals);
+      s = http_info->url;
+      len = strlen(http_info->url);
+      end = s+len;
+      s--;
+      do {
+	  s++;
+	  e = end; /*Point to the end of string*/
+	  do {
+	      store = *e;
+	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
+	      ci_debug_printf(9,"Going to check: %s\n", s);
+	      ret = lt_db->search(lt_db, s, &vals);
+	      lt_db->release_result(lt_db, (void *)&vals);
+	      *e = store; /*... and restore string to its previous state :-) */
+	  }
+	  while(!ret && (e = find_last(s, e-1, "/?" )));
+      } while (!ret && (s = strpbrk(s, "./")) && *s != '/');
+      
+
+      break;
   case CHECK_SRV_IP:
+      break;
   case CHECK_SRV_NET:
+      break;
   default:
       /*nothing*/
       break;
