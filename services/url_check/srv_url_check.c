@@ -79,7 +79,7 @@ struct lookup_db *new_lookup_db(char *name, int type,
 				);
 /* ALL lookup_db functions*/
 int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info);
-
+void release_lookup_dbs();
 
 #define DB_ERROR -1
 #define DB_DENY   0
@@ -108,6 +108,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t *);
 int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ci_request_t * req);
+void url_check_close_service();
 //int    url_check_write(char *buf,int len ,int iseof,ci_request_t *req);
 //int    url_check_read(char *buf,int len,ci_request_t *req);
 
@@ -132,7 +133,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
      ICAP_REQMOD,
      url_check_init_service,    /* init_service */
      NULL,                      /*post_init_service */
-     NULL,                      /*close_Service */
+     url_check_close_service,                      /*close_Service */
      url_check_init_request_data,       /* init_request_data */
      url_check_release_data,    /*Release request data */
      url_check_check_preview,
@@ -167,6 +168,11 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
        return add_lookup_db(int_db);
 
      return CI_OK;
+}
+
+void url_check_close_service()
+{
+    release_lookup_dbs();
 }
 
 
@@ -708,7 +714,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
       do {
 	  s++;
 	  ret = lt_db->search(lt_db, s, &vals);
-	  lt_db->release_result(lt_db, &vals);
+	  lt_db->release_result(lt_db, vals);
       } while (!ret && (s=strchr(s, '.')));
       break;
   case CHECK_URL:
@@ -741,7 +747,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
 	      ci_debug_printf(9,"Going to check: %s\n", s);
 	      ret = lt_db->search(lt_db, s, &vals);
-	      lt_db->release_result(lt_db, (void *)&vals);
+	      lt_db->release_result(lt_db, vals);
 	      *e = store; /*... and restore string to its previous state :-) */
 	  }
 	  while(!ret && (e = find_last(s, e-1, "/?" )));
