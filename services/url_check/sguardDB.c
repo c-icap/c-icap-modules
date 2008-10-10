@@ -152,10 +152,10 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 
 #if(DB_VERSION_MINOR>=1)
     if ((ret = dbp->open( dbp, NULL, filename, NULL,
-			  DB_BTREE, 0, CREATE_FLAGS)) != 0)
+			  DB_BTREE, DB_RDONLY, 0)) != 0)
 #else
 	if ((ret = dbp->open( dbp, filename, NULL,
-			      DB_BTREE, 0, CREATE_FLAGS)) != 0)
+			      DB_BTREE, DB_RDONLY, 0)) != 0)
 #endif
 	{
 	    ci_debug_printf(1, "open db %s: %s\n", filename, db_strerror(ret));
