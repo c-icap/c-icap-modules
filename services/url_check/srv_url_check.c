@@ -490,7 +490,7 @@ void release_lookup_dbs()
     LOOKUP_DBS=LOOKUP_DBS->next;
     free(tmp_ldb->name);
     if(tmp_ldb->release_db)
-      tmp_ldb->release_db(tmp_ldb->db_data);
+      tmp_ldb->release_db(tmp_ldb);
     free(tmp_ldb);
   }
 }
