@@ -701,7 +701,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   void **vals=NULL;
   void *ret = NULL;
-  char *s,*e, *end, store;
+  char *s, *snext, *e, *end, store;
   int len;
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
   switch(ldb->check) {
@@ -742,16 +742,20 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
       do {
 	  s++;
 	  e = end; /*Point to the end of string*/
+	  snext = strpbrk(s, "./");
+	  if(!snext || *snext == '/') /*Do not search the top level domains*/
+	      break;
 	  do {
 	      store = *e;
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
 	      ci_debug_printf(9,"Going to check: %s\n", s);
 	      ret = lt_db->search(lt_db, s, &vals);
 	      lt_db->release_result(lt_db, vals);
-	      *e = store; /*... and restore string to its previous state :-) */
+	      *e = store; /*... and restore string to its previous state :-), 
+			    the http_info->url must not change */
 	  }
 	  while(!ret && (e = find_last(s, e-1, "/?" )));
-      } while (!ret && (s = strpbrk(s, "./")) && *s != '/');
+      } while (!ret && (s = snext));
       
 
       break;
