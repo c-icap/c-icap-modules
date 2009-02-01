@@ -31,9 +31,10 @@ enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
 
 #define CHECK_HOST     0x01
 #define CHECK_URL      0x02
-#define CHECK_DOMAIN   0x04
-#define CHECK_SRV_IP   0x08
-#define CHECK_SRV_NET  0x16
+#define CHECK_FULL_URL 0x04
+#define CHECK_DOMAIN   0x08
+#define CHECK_SRV_IP   0x10
+#define CHECK_SRV_NET  0x20
 
 #define MAX_URL_SIZE  65536
 #define MAX_PAGE_SIZE (MAX_URL_SIZE - CI_MAXHOSTNAMELEN)
@@ -50,8 +51,8 @@ struct http_info {
     char host[CI_MAXHOSTNAMELEN + 1];
     char server_ip[64];                   /*I think ipv6 address needs about 32 bytes*/
     char site[CI_MAXHOSTNAMELEN + 1];
-    char url[MAX_URL_SIZE];              /* I think it is enough, does not 
-					     include page arguments */
+    char url[MAX_URL_SIZE];              /* I think it is enough */
+    char *args;
 };
 
 enum lookupdb_types {DB_INTERNAL, DB_SG, DB_LOOKUP};
@@ -143,6 +144,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
      NULL
 };
 
+int URL_CHECK_DATA_POOL = -1;
 struct url_check_data {
      ci_cached_file_t *body;
      int denied;
@@ -160,6 +162,12 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
      xops |= CI_XAUTHENTICATEDUSER | CI_XAUTHENTICATEDGROUPS;
      ci_service_set_xopts(srv_xdata, xops);
 
+     /*initialize mempools          */
+     URL_CHECK_DATA_POOL = ci_object_pool_register("url_check_data", 
+						   sizeof(struct url_check_data));
+
+     if (URL_CHECK_DATA_POOL < 0)
+	 return CI_ERROR;
      /*Add internal database lookups*/
      int_db = new_lookup_db("ALL", DB_INTERNAL, CHECK_HOST, NULL,
 			    all_lookup_db,
@@ -172,13 +180,14 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
 
 void url_check_close_service()
 {
+    ci_object_pool_unregister(URL_CHECK_DATA_POOL);
     release_lookup_dbs();
 }
 
 
 void *url_check_init_request_data(ci_request_t * req)
 {
-     struct url_check_data *uc = malloc(sizeof(struct url_check_data));
+     struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
      uc->body = NULL;
      uc->denied = 0;
      return uc;      /*Get from a pool of pre-allocated structs better...... */
@@ -190,7 +199,7 @@ void url_check_release_data(void *data)
      struct url_check_data *uc = data;
      if (uc->body)
           ci_cached_file_destroy(uc->body);
-     free(uc);                  /*Return object to pool..... */
+     ci_object_pool_free(uc);    /*Return object to pool..... */
 }
 
 int get_protocol(char *str,int size) 
@@ -246,6 +255,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      /*check if we are in the form proto://url
       */
      httpinf->url[0]='\0';
+     httpinf->args = NULL;
      if ((tmp=strstr(str,"://"))) {	 
 	 proxy_mode=1;
 	 httpinf->proto = get_protocol(str,str-tmp);
@@ -275,8 +285,14 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      }
 
      i = strlen(httpinf->url);
-     while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE)    /*copy page to the struct. */
+     while (*str != ' ' && *str != '?' && *str != '\0' && i < MAX_PAGE_SIZE)    /*copy page to the struct. */
           httpinf->url[i++] = *str++;
+     
+     if (*str == '?') {
+	  httpinf->args = &(httpinf->url[i]);
+	  while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE) 
+	      httpinf->url[i++] = *str++; /*copy page arguments*/
+     }
      httpinf->url[i] = '\0';
 
      if (*str != ' ') {         /*Where is the protocol info????? */
@@ -639,7 +655,7 @@ void sg_release_db(struct lookup_db *ldb)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   sg_close_db(sg_db);
-  free(sg_db);
+  ldb->db_data = NULL;
 }
 
 
@@ -702,7 +718,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
   void **vals=NULL;
   void *ret = NULL;
   char *s, *snext, *e, *end, store;
-  int len;
+  int len, full_url =0;
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
   switch(ldb->check) {
   case CHECK_HOST:
@@ -717,6 +733,8 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	  lt_db->release_result(lt_db, vals);
       } while (!ret && (s=strchr(s, '.')));
       break;
+  case CHECK_FULL_URL:
+      full_url = 1;
   case CHECK_URL:
       /*for www.site.com/to/path/page.html need to test:
 
@@ -736,8 +754,12 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	com/
        */
       s = http_info->url;
-      len = strlen(http_info->url);
-      end = s+len;
+      if (!full_url && http_info->args)
+	  end = http_info->args;
+      else {
+	  len = strlen(http_info->url);
+	  end = s+len;
+      }
       s--;
       do {
 	  s++;
@@ -753,8 +775,11 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	      lt_db->release_result(lt_db, vals);
 	      *e = store; /*... and restore string to its previous state :-), 
 			    the http_info->url must not change */
-	  }
-	  while(!ret && (e = find_last(s, e-1, "/?" )));
+	      if (full_url && e > http_info->args)
+		  e = http_info->args;
+	      else
+		  e = find_last(s, e-1, "/" );
+	  } while(!ret && e);
       } while (!ret && (s = snext));
       
 
@@ -792,6 +817,8 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
     check = CHECK_HOST;
   else if(strcmp(argv[1],"url")==0)
     check = CHECK_URL;
+  else if(strcmp(argv[1],"full_url")==0)
+      check = CHECK_FULL_URL;
   else if(strcmp(argv[1],"domain")==0)
     check = CHECK_DOMAIN;
   else if(strcmp(argv[1],"server_ip")==0)

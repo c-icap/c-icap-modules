@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include "sguardDB.h"
+#include "mem.h"
 #include "debug.h"
 
 /*
@@ -165,10 +166,21 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
     return dbp;
 }
 
+int SGDB_T_POOL = -1;
 
 sg_db_t *sg_init_db(char *home)
 {
-    sg_db_t *sg_db=(sg_db_t *)malloc(sizeof(sg_db_t));
+    sg_db_t *sg_db;
+    
+    if(SGDB_T_POOL < 0 )
+	sg_db = ci_object_pool_register("sg_db_t", sizeof(sg_db_t));
+
+    if(SGDB_T_POOL < 0 )
+	return NULL;
+
+    sg_db = ci_object_pool_alloc(SGDB_T_POOL);
+    if(!sg_db)
+	return NULL;
 
     sg_db->env_db=NULL;
     sg_db->domains_db=NULL;
@@ -176,7 +188,7 @@ sg_db_t *sg_init_db(char *home)
 
     sg_db->env_db = db_setup(home);
     if(sg_db->env_db==NULL){
-	free(sg_db);
+	ci_object_pool_free(sg_db);
 	return NULL;
     }
 
@@ -184,14 +196,14 @@ sg_db_t *sg_init_db(char *home)
 
     if(sg_db->domains_db== NULL) {
 	sg_close_db(sg_db);
-	free(sg_db);
+	ci_object_pool_free(sg_db);
 	return NULL;
     }
 
     sg_db->urls_db = sg_open_db(sg_db->env_db, "urls.db", compare_str);
     if(sg_db->urls_db== NULL) {
 	sg_close_db(sg_db);
-	free(sg_db);
+	ci_object_pool_free(sg_db);
 	return NULL;
     }
 
@@ -217,6 +229,7 @@ void sg_close_db(sg_db_t *sg_db)
 	sg_db->env_db->close(sg_db->env_db, 0);
 	sg_db->env_db=NULL;
     }
+    ci_object_pool_free(sg_db);
 }
 
 int compdomainkey(char *dkey,char *domain,int dkey_len)
