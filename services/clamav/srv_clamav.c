@@ -28,6 +28,7 @@
 #include "srv_clamav.h"
 #include "filetype.h"
 #include "ci_threads.h"
+#include "mem.h"
 #include "commands.h"
 #include <errno.h>
 
@@ -75,6 +76,7 @@ int VIR_UPDATE_TIME = 15;
 /*srv_clamav service extra data ... */
 ci_service_xdata_t *srv_clamav_xdata = NULL;
 
+int AVREQDATA_POOL = -1;
 
 int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
@@ -186,6 +188,13 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
 
      limits.archivememlim = 0;  /* disable memory limit for bzip2 scanner */
 
+
+     /*Initialize object pools*/
+     AVREQDATA_POOL = ci_object_pool_register("av_req_data_t", sizeof(av_req_data_t));
+
+     if(AVREQDATA_POOL < 0)
+	 return 0;
+     
      /*initialize service commands */
      register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                       dbreload_command);
@@ -198,6 +207,7 @@ void srvclamav_close_service()
 {
      free(scantypes);
      free(scangroups);
+     ci_object_pool_unregister(AVREQDATA_POOL);
      destroy_virusdb();
 }
 
@@ -216,7 +226,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
      if (ci_req_hasbody(req)) {
           ci_debug_printf(8, "Request type: %d. Preview size:%d\n", req->type,
                           preview_size);
-          if (!(data = malloc(sizeof(av_req_data_t)))) {
+          if (!(data = ci_object_pool_alloc(AVREQDATA_POOL))) {
                ci_debug_printf(1,
                                "Error allocation memory for service data!!!!!!!");
                return NULL;
@@ -257,7 +267,7 @@ void srvclamav_release_request_data(void *data)
           if (((av_req_data_t *) data)->must_scanned == VIR_SCAN) {
                ci_simple_file_release(((av_req_data_t *) data)->body);
                if (((av_req_data_t *) data)->requested_filename)
-                    free(((av_req_data_t *) data)->requested_filename);
+                    ci_buffer_free(((av_req_data_t *) data)->requested_filename);
           }
           else
 #endif
@@ -268,8 +278,8 @@ void srvclamav_release_request_data(void *data)
                ci_membuf_free(((av_req_data_t *) data)->error_page);
 
           if (((av_req_data_t *) data)->virus_name)
-               free(((av_req_data_t *) data)->virus_name);
-          free(data);
+               ci_buffer_free(((av_req_data_t *) data)->virus_name);
+          ci_object_pool_free(data);
      }
 }
 
@@ -441,8 +451,10 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      ret =
          cl_scandesc(body->fd, &virname, &scanned_data, vdb, &limits,
                      CL_SCAN_STDOPT);
-     if (ret == CL_VIRUS)
-          data->virus_name = strdup(virname);
+     if (ret == CL_VIRUS) {
+	 data->virus_name = ci_buffer_alloc(strlen(virname)+1);
+	 strcpy(data->virus_name, virname);
+     }
      release_virusdb(vdb);
 
      ci_debug_printf(9,

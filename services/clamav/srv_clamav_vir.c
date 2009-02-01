@@ -20,6 +20,7 @@
 #include "c-icap.h"
 #include "service.h"
 #include "header.h"
+#include "mem.h"
 #include "body.h"
 #include "simple_api.h"
 #include "debug.h"
@@ -169,9 +170,12 @@ char *srvclamav_compute_name(ci_request_t * req)
                if ((str = strrchr(filename, '?')))
                     filename = str + 1;
           }
-          if (filename != '\0')
-               return strdup(filename);
-          else
+          if (filename != '\0') {
+	      str = ci_buffer_alloc(strlen(filename) + 1);
+	      strcpy(str, filename);
+	      return str;
+	       
+          } else
                return NULL;
      }
      /*if we are here we are going to compute name from request headers if exists.... */
@@ -203,7 +207,7 @@ char *srvclamav_compute_name(ci_request_t * req)
      if (namelen >= CI_FILENAME_LEN)
           namelen = CI_FILENAME_LEN - 1;
 
-     str = malloc(namelen * sizeof(char) + 1);
+     str = ci_buffer_alloc(namelen * sizeof(char) + 1);
      strncpy(str, filename, namelen);
      str[namelen] = '\0';
      return str;
