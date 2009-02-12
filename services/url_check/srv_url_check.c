@@ -218,14 +218,25 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
     char *str, *tmp;
      int i, proxy_mode=0;
 
+     /*Initialize htto_info struct*/
+     httpinf->url[0]='\0';
+     httpinf->args = NULL;
+     httpinf->site[0] = '\0';
+     httpinf->host[0] = '\0';
+     httpinf->server_ip[0] = '\0';
+     httpinf->method = HTTP_UNKNOWN;
+     httpinf->port = 0;
+     httpinf->proto = UNKNOWN;
+     httpinf->http_major = -1;
+     httpinf->http_minor = -1;
+
      /*Now get the site name */
      str = ci_headers_value(req_header, "Host");
      if (str) {
           strncpy(httpinf->host, str, CI_MAXHOSTNAMELEN);
           httpinf->site[CI_MAXHOSTNAMELEN] = '\0';
      }
-     else
-          httpinf->host[0] = '\0';
+
      /*
        When x-server-ip implemented in c-icap (and squid3)
        strcpy(http->inf,req->xserverip);
@@ -237,10 +248,8 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 	 httpinf->method = HTTP_GET;
      else if (str[0] == 'p' || str[0] == 'P')   /*post request.... */
 	 httpinf->method = HTTP_POST;
-     else {
-	 httpinf->method = HTTP_UNKNOWN;
-	 return 0;
-     }
+     /*else unknown*/
+
      if ((str = strchr(str, ' ')) == NULL) {    /*The request must have the form:GETPOST page HTTP/X.X */
           return 0;
      }
@@ -254,8 +263,6 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
       */
      /*check if we are in the form proto://url
       */
-     httpinf->url[0]='\0';
-     httpinf->args = NULL;
      if ((tmp=strstr(str,"://"))) {	 
 	 proxy_mode=1;
 	 httpinf->proto = get_protocol(str,str-tmp);
@@ -280,7 +287,6 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      else {
 	 strcpy(httpinf->url, httpinf->host);
 	 strcpy(httpinf->site, httpinf->host);
-	 httpinf->proto = UNKNOWN;
 	 httpinf->port = 80;
      }
 
@@ -351,7 +357,8 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
           return CI_ERROR;
 
-     get_http_info(req, req_header, &httpinf);
+     if (!get_http_info(req, req_header, &httpinf)) /*Unknown method or something else...*/
+	 return CI_MOD_ALLOW204;
 
      ci_debug_printf(9, "URL  to host %s\n", httpinf.site);
      ci_debug_printf(9, "URL  page %s\n", httpinf.url);
@@ -701,12 +708,12 @@ void *lt_load_db(struct lookup_db *db, char *path)
   return (db->db_data = (void *)lt_db);
 }
 
-char *find_last(char *s,char *e,const char *accept)
+char *find_last(char *s,char *e,const char accept)
 {
   char *p;
   p = e;
   while(p >= s) {
-      if(strchr(accept, *p))
+      if(accept == *p)
 	  return p;
       p--;
   }
@@ -778,7 +785,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	      if (full_url && e > http_info->args)
 		  e = http_info->args;
 	      else
-		  e = find_last(s, e-1, "/" );
+		  e = find_last(s, e-1, '/' );
 	  } while(!ret && e);
       } while (!ret && (s = snext));
       
