@@ -102,17 +102,28 @@ AC_ARG_WITH(libdb,
          libdb="no"
     ;;
     * )
-        libdb="yes";
-        libdbinc=-I"$withval"/include
-        libdblib=-L"$withval"/lib
+        libdb=$withval
     ;;
   esac
 ],
 )
 
-AC_SUBST(libdbinc)
-AC_SUBST(libdblib)
-
+if test a"$libdb" != "ano"; then
+   if test a"$libdb" != "ayes"; then
+        AC_CHECK_LIB(db,  db_version,
+                     [BDB_ADD_LDFLAG="-L $libdb/lib -ldb"; BDB_ADD_FLAG="-I$libdb/lib"; AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])],
+                     [libdb="no"]
+                     )
+        AC_SUBST(BDB_ADD_LDFLAG)
+        AC_SUBST(BDB_ADD_FLAG)
+   else
+        AC_CHECK_LIB(db,  db_version,
+                     [BDB_ADD_LDFLAG=" -ldb"; AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])],
+                     [libdb="no"]
+                     )
+        AC_SUBST(BDB_ADD_LDFLAG)
+   fi
+fi
 
 # Now determine which modules will going to build .....
 
