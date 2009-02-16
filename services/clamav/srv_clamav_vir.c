@@ -29,6 +29,7 @@
 #include <time.h>
 #include <errno.h>
 #include "srv_clamav.h"
+#include "../../config.h"
 
 extern char *VIR_SAVE_DIR;
 extern char *VIR_HTTP_SERVER;
