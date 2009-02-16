@@ -16,7 +16,6 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-
 #include "c-icap.h"
 #include "service.h"
 #include "header.h"
@@ -24,7 +23,10 @@
 #include "simple_api.h"
 #include "lookup_table.h"
 #include "debug.h"
+#include "../../config.h"
+#if defined(HAVE_BDB)
 #include "sguardDB.h"
+#endif
 
 /*Structs for this module */
 enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
@@ -122,7 +124,9 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata);
 int cfg_profile(char *directive, char **argv, void *setdata);
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
+#if defined(HAVE_BDB)
   {"LoadSquidGuardDB", NULL, cfg_load_sg_db, NULL},
+#endif
   {"LookupTableDB", NULL, cfg_load_lt_db, NULL},
   {"Profile", NULL, cfg_profile, NULL},
   {NULL, NULL, NULL, NULL}
@@ -641,7 +645,7 @@ int cfg_profile(char *directive, char **argv, void *setdata)
 /*****************************************************************/
 /* SguidGuard Databases                                          */
 
-
+#if defined(HAVE_BDB)
 void *sg_load_db(struct lookup_db *db, char *path)
 {
   sg_db_t *sg_db;
@@ -692,7 +696,7 @@ int cfg_load_sg_db(char *directive, char **argv, void *setdata)
   
   return 0;
 }
-
+#endif
 
 /*****************************************************************/
 /* c-icap lookup table databases                                 */
