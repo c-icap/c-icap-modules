@@ -30,7 +30,7 @@
 #include "ci_threads.h"
 #include "mem.h"
 #include "commands.h"
-#include "../../config.h"
+#include "../../common.h"
 #include <errno.h>
 
 #ifdef HAVE_LIBCLAMAV_09X

@@ -23,7 +23,7 @@
 #include "simple_api.h"
 #include "lookup_table.h"
 #include "debug.h"
-#include "../../config.h"
+#include "../../common.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif

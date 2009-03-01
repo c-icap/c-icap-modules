@@ -8,8 +8,8 @@ srv_url_check_la_LDFLAGS=  -module -avoid-version
 srv_url_check_la_SOURCES = srv_url_check.c
 
 if USEBDB
- srv_url_check_la_LIBADD += @libdblib@ -ldb
- srv_url_check_la_CFLAGS += @libdbinc@
+ srv_url_check_la_LIBADD += @BDB_ADD_LDFLAG@ -ldb
+ srv_url_check_la_CFLAGS += @BDB_ADD_FLAG@
  srv_url_check_la_SOURCES += sguardDB.c
 endif
 
