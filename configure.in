@@ -88,6 +88,18 @@ AC_MSG_RESULT(yes),
 AC_MSG_RESULT(no),
 )
 
+#
+# clamav drop the cl_limits struct at version 0.95. I think it is 
+# a good check for clamav lib version.
+AC_MSG_CHECKING([for clamav 0.95 or newer])
+AC_TRY_COMPILE(
+[#include <clamav.h>], 
+[struct cl_limits limist;],
+AC_MSG_RESULT(no), 
+AC_DEFINE(HAVE_LIBCLAMAV_095,1,[Define HAVE_LIBCLAMAV_095 if have clamav 0.95.x or newer])
+AC_MSG_RESULT(yes),
+)
+# restore flags  / clamav tests
 CFLAGS=$OLD_CFLAGS
 
 libdb="yes"

@@ -33,7 +33,7 @@
 #include "../../common.h"
 #include <errno.h>
 
-#ifdef HAVE_LIBCLAMAV_09X
+#if defined(HAVE_LIBCLAMAV_09X) || defined(HAVE_LIBCLAMAV_095)
 #define CL_ENGINE struct cl_engine
 #else
 #define CL_ENGINE struct cl_node
@@ -46,7 +46,14 @@ struct virus_db {
      int refcount;
 };
 
+#ifndef HAVE_LIBCLAMAV_095
 struct cl_limits limits;
+#endif
+long int CLAMAV_MAXRECLEVEL = 5;
+long int CLAMAV_MAX_FILES = 0;
+ci_off_t CLAMAV_MAXFILESIZE = 100 * 1048576; /* maximal archived file size == 100 Mb */
+
+
 
 struct virus_db *virusdb;
 struct virus_db *old_virusdb = NULL;
@@ -80,6 +87,8 @@ ci_service_xdata_t *srv_clamav_xdata = NULL;
 int AVREQDATA_POOL = -1;
 
 int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
+                           struct ci_server_conf *server_conf);
+int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
 void srvclamav_close_service();
 int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
@@ -121,10 +130,10 @@ static struct ci_conf_entry conf_variables[] = {
      {"MaxObjectSize", &MAX_OBJECT_SIZE, ci_cfg_size_off, NULL},
      {"StartSendPercentDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
-     {"ClamAvMaxRecLevel", &limits.maxreclevel, ci_cfg_set_int, NULL},
-     {"ClamAvMaxFilesInArchive", &limits.maxfiles, ci_cfg_set_int, NULL},
+     {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
+     {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
 /*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
-     {"ClamAvMaxFileSizeInArchive", &limits.maxfilesize, ci_cfg_size_long,
+     {"ClamAvMaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
       NULL},
      {"ClamAvTmpDir", NULL, cfg_ClamAvTmpDir, NULL},
 #ifdef VIRALATOR_MODE
@@ -142,7 +151,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
      "Clamav/Antivirus service",        /*Module short description */
      ICAP_RESPMOD | ICAP_REQMOD,        /*Service type responce or request modification */
      srvclamav_init_service,    /*init_service. */
-     NULL,                      /*post_init_service. */
+     srvclamav_post_init_service,   /*post_init_service. */
      srvclamav_close_service,   /*close_service */
      srvclamav_init_request_data,       /*init_request_data. */
      srvclamav_release_request_data,    /*release request data */
@@ -178,24 +187,15 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      ci_service_set_preview(srv_xdata, 1024);
      ci_service_enable_204(srv_xdata);
      ci_service_set_transfer_preview(srv_xdata, "*");
-     memset(&limits, 0, sizeof(struct cl_limits));
-     limits.maxfiles = 0 /*1000 */ ;    /* max files */
-     limits.maxfilesize = 100 * 1048576;        /* maximal archived file size == 100 Mb */
-     limits.maxreclevel = 5;    /* maximal recursion level */
-
-#ifdef HAVE_LIBCLAMAV_LIMITS_MAXRATIO
-     limits.maxratio = 200;     /* maximal compression ratio */
-#endif
-
-     limits.archivememlim = 0;  /* disable memory limit for bzip2 scanner */
-
+ 
 
      /*Initialize object pools*/
      AVREQDATA_POOL = ci_object_pool_register("av_req_data_t", sizeof(av_req_data_t));
 
-     if(AVREQDATA_POOL < 0)
+     if(AVREQDATA_POOL < 0) {
+	 ci_debug_printf(1, " srvclamav_init_service: error registering object_pool av_req_data_t\n");
 	 return 0;
-     
+     }
      /*initialize service commands */
      register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                       dbreload_command);
@@ -203,6 +203,37 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      return 1;
 }
 
+int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
+                           struct ci_server_conf *server_conf)
+{
+    int ret;
+#ifndef HAVE_LIBCLAMAV_095
+     memset(&limits, 0, sizeof(struct cl_limits));
+     limits.maxfiles = CLAMAV_MAX_FILES;
+     limits.maxfilesize = CLAMAV_MAXFILESIZE;
+     limits.maxreclevel = CLAMAV_MAXRECLEVEL;
+
+#ifdef HAVE_LIBCLAMAV_LIMITS_MAXRATIO
+     limits.maxratio = 200;     /* maximal compression ratio */
+#endif
+
+     limits.archivememlim = 0;  /* disable memory limit for bzip2 scanner */
+#else
+     if(!virusdb) /* ??????? */
+	 return 0;
+     
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILES, CLAMAV_MAX_FILES); 
+     if(ret != CL_SUCCESS)
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAX_FILES\n");
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILESIZE, CLAMAV_MAXFILESIZE); 
+     if(ret != CL_SUCCESS)
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAXFILESIZE\n");
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_RECURSION, CLAMAV_MAXRECLEVEL); 
+     if(ret != CL_SUCCESS)
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAX_RECURSION\n");
+#endif
+     return 1;
+}
 
 void srvclamav_close_service()
 {
@@ -449,9 +480,16 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      ci_debug_printf(8, "Scan from file\n");
      lseek(body->fd, 0, SEEK_SET);
      vdb = get_virusdb();
+#ifndef HAVE_LIBCLAMAV_095
      ret =
          cl_scandesc(body->fd, &virname, &scanned_data, vdb, &limits,
                      CL_SCAN_STDOPT);
+#else
+     ret =
+         cl_scandesc(body->fd, &virname, &scanned_data, vdb,
+                     CL_SCAN_STDOPT);
+#endif
+
      if (ret == CL_VIRUS) {
 	 data->virus_name = ci_buffer_alloc(strlen(virname)+1);
 	 strcpy(data->virus_name, virname);
@@ -507,9 +545,18 @@ int init_virusdb()
      memset(virusdb, 0, sizeof(struct virus_db));
      if (!virusdb)
           return 0;
-#ifdef HAVE_LIBCLAMAV_09X
+#ifdef HAVE_LIBCLAMAV_095
+     if(!(virusdb->db = cl_engine_new())) {
+	 ci_debug_printf(1, "Clamav DB load: Can't create new clamav engine\n");
+	 return 0;
+     }
+
+     if ((ret = cl_load(cl_retdbdir(), virusdb->db, &no, CL_DB_STDOPT))) {
+          ci_debug_printf(1, "Clamav DB load: cl_load failed: %s\n",
+                          cl_strerror(ret));
+#elif defined(HAVE_LIBCLAMAV_09X)
      if ((ret = cl_load(cl_retdbdir(), &(virusdb->db), &no, CL_DB_STDOPT))) {
-          ci_debug_printf(1, "Clamav DB reload: cl_load failed: %s\n",
+          ci_debug_printf(1, "Clamav DB load: cl_load failed: %s\n",
                           cl_strerror(ret));
 #else
      if ((ret = cl_loaddbdir(cl_retdbdir(), &(virusdb->db), &no))) {
@@ -517,10 +564,18 @@ int init_virusdb()
 #endif
           return 0;
      }
+#ifdef HAVE_LIBCLAMAV_095
+     if ((ret = cl_engine_compile(virusdb->db))) {
+#else
      if ((ret = cl_build(virusdb->db))) {
+#endif
           ci_debug_printf(1, "Database initialization error: %s\n",
                           cl_strerror(ret));
+#ifdef HAVE_LIBCLAMAV_095
+	  cl_engine_free(virusdb->db);
+#else
           cl_free(virusdb->db);
+#endif
           free(virusdb);
           virusdb = NULL;
           return 0;
@@ -542,6 +597,7 @@ int init_virusdb()
 #undef DB_NO_FULL_LOCK
 int reload_virusdb()
 {
+    printf("Reloading.....");
      struct virus_db *vdb = NULL;
      int ret;
      unsigned int no = 0;
@@ -559,7 +615,15 @@ int reload_virusdb()
           return 0;
      memset(vdb, 0, sizeof(struct virus_db));
      ci_debug_printf(9, "db_reload going to load db\n");
-#ifdef HAVE_LIBCLAMAV_09X
+#ifdef HAVE_LIBCLAMAV_095
+     if(!(vdb->db = cl_engine_new())) {
+	 ci_debug_printf(1, "Clamav DB load: Can't create new clamav engine\n");
+	 return 0;
+     }
+     if ((ret = cl_load(cl_retdbdir(), vdb->db, &no, CL_DB_STDOPT))) {
+          ci_debug_printf(1, "Clamav DB reload: cl_load failed: %s\n",
+                          cl_strerror(ret));
+#elif defined(HAVE_LIBCLAMAV_09X)
      if ((ret = cl_load(cl_retdbdir(), &(vdb->db), &no, CL_DB_STDOPT))) {
           ci_debug_printf(1, "Clamav DB reload: cl_load failed: %s\n",
                           cl_strerror(ret));
@@ -571,11 +635,19 @@ int reload_virusdb()
           return 0;
      }
      ci_debug_printf(9, "loaded. Going to build\n");
+#ifdef HAVE_LIBCLAMAV_095
+     if ((ret = cl_engine_compile(vdb->db))) {
+#else
      if ((ret = cl_build(vdb->db))) {
+#endif
           ci_debug_printf(1,
                           "Clamav DB reload: Database initialization error: %s\n",
                           cl_strerror(ret));
+#ifdef HAVE_LIBCLAMAV_095
+	  cl_engine_free(vdb->db);
+#else
           cl_free(vdb->db);
+#endif
           free(vdb);
           vdb = NULL;
 #ifdef DB_NO_FULL_LOCK
@@ -593,13 +665,18 @@ int reload_virusdb()
      old_virusdb->refcount--;
      ci_debug_printf(9, "Old VirusDB refcount:%d\n", old_virusdb->refcount);
      if (old_virusdb->refcount <= 0) {
+#ifdef HAVE_LIBCLAMAV_095
+	  cl_engine_free(old_virusdb->db);
+#else
           cl_free(old_virusdb->db);
+#endif
           free(old_virusdb);
           old_virusdb = NULL;
      }
      virusdb = vdb;
      virusdb->refcount = 1;
      ci_thread_mutex_unlock(&db_mutex);
+     printf("Done Reloading!\n");
      return 1;
 }
 
@@ -623,7 +700,11 @@ void release_virusdb(CL_ENGINE * db)
           ci_debug_printf(9, "Old VirusDB refcount:%d\n",
                           old_virusdb->refcount);
           if (old_virusdb->refcount <= 0) {
+#ifdef HAVE_LIBCLAMAV_095
+	      cl_engine_free(old_virusdb->db);
+#else
                cl_free(old_virusdb->db);
+#endif
                free(old_virusdb);
                old_virusdb = NULL;
           }
@@ -638,12 +719,20 @@ void release_virusdb(CL_ENGINE * db)
 void destroy_virusdb()
 {
      if (virusdb) {
+#ifdef HAVE_LIBCLAMAV_095
+	  cl_engine_free(virusdb->db);
+#else
           cl_free(virusdb->db);
+#endif
           free(virusdb);
           virusdb = NULL;
      }
      if (old_virusdb) {
+#ifdef HAVE_LIBCLAMAV_095
+	  cl_engine_free(old_virusdb->db);
+#else
           cl_free(old_virusdb->db);
+#endif
           free(old_virusdb);
           old_virusdb = NULL;
      }
@@ -920,7 +1009,12 @@ int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
 
       */
 
+#ifdef HAVE_LIBCLAMAV_095
+     if(virusdb)
+	 cl_engine_set_str(virusdb->db, CL_ENGINE_TMPDIR, argv[0]); 
+#else
      cl_settempdir(argv[0], 0);
+#endif
      ci_debug_printf(1, "Setting parameter :%s=%s\n", directive, argv[0]);
      return val;
 }
