@@ -58,11 +58,11 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
           if (NULL ==
               (data->body =
                ci_simple_file_named_new(VIR_SAVE_DIR,
-                                        data->requested_filename)))
-               data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL);
+                                        data->requested_filename, 0)))
+	      data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
      }
      else {
-          data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL);
+	 data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
      }
 
      ci_req_unlock_data(req);

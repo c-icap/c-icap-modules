@@ -67,7 +67,7 @@ char *srvclamav_compute_name(ci_request_t * req);
 
 static int SEND_PERCENT_BYTES = 0;      /* Can send all bytes that has received without checked */
 static int ALLOW204 = 0;
-static ci_off_t MAX_OBJECT_SIZE = 0;
+static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
 
 static struct ci_magics_db *magic_db = NULL;
@@ -357,7 +357,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
                return CI_MOD_ALLOW204;
           }
 
-          data->body = ci_simple_file_new(content_size);
+          data->body = ci_simple_file_new(MAX_OBJECT_SIZE);
 
           if (SEND_PERCENT_BYTES >= 0 && START_SEND_AFTER == 0) {
                ci_req_unlock_data(req); /*Icap server can send data before all body has received */
@@ -546,6 +546,11 @@ int init_virusdb()
      if (!virusdb)
           return 0;
 #ifdef HAVE_LIBCLAMAV_095
+     if((ret = cl_init(CL_INIT_DEFAULT))) {
+        ci_debug_printf(1, "!Can't initialize libclamav: %s\n", cl_strerror(ret));
+        return 0;
+    }
+
      if(!(virusdb->db = cl_engine_new())) {
 	 ci_debug_printf(1, "Clamav DB load: Can't create new clamav engine\n");
 	 return 0;
