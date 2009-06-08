@@ -399,7 +399,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
              Allocate a new body for it 
            */
           if (ci_req_hasbody(req)) {
-               int clen = ci_http_content_lenght(req) + 100;
+               int clen = ci_http_content_length(req) + 100;
                uc->body = ci_cached_file_new(clen);
           }
 

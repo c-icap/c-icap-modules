@@ -337,7 +337,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
           return CI_MOD_ALLOW204;
      }
 
-     content_size = ci_http_content_lenght(req);
+     content_size = ci_http_content_length(req);
 #ifdef VIRALATOR_MODE
      /*Lets see ........... */
      if (data->must_scanned == VIR_SCAN && ci_req_type(req) == ICAP_RESPMOD) {
