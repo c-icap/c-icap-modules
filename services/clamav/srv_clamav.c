@@ -224,13 +224,13 @@ int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
      
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILES, CLAMAV_MAX_FILES); 
      if(ret != CL_SUCCESS)
-	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAX_FILES\n");
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_FILES\n");
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILESIZE, CLAMAV_MAXFILESIZE); 
      if(ret != CL_SUCCESS)
-	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAXFILESIZE\n");
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAXFILESIZE\n");
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_RECURSION, CLAMAV_MAXRECLEVEL); 
      if(ret != CL_SUCCESS)
-	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! can not set  CL_ENGINE_MAX_RECURSION\n");
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_RECURSION\n");
 #endif
      return 1;
 }
@@ -294,7 +294,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
 void srvclamav_release_request_data(void *data)
 {
      if (data) {
-          ci_debug_printf(8, "Releaseing srv_clamav data.....\n");
+          ci_debug_printf(8, "Releasing srv_clamav data.....\n");
 #ifdef VIRALATOR_MODE
           if (((av_req_data_t *) data)->must_scanned == VIR_SCAN) {
                ci_simple_file_release(((av_req_data_t *) data)->body);
@@ -323,7 +323,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      int file_type;
      av_req_data_t *data = ci_service_data(req);
 
-     ci_debug_printf(9, "OK The preview data size is %d\n", preview_data_len);
+     ci_debug_printf(9, "OK; the preview data size is %d\n", preview_data_len);
 
      if (!data || !ci_req_hasbody(req)){
 	 ci_debug_printf(9, "No body data, allow 204\n");
@@ -333,7 +333,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
      file_type = get_filetype(req, preview_data, preview_data_len);
      if ((data->must_scanned = must_scanned(file_type, data)) == 0) {
-          ci_debug_printf(8, "Not in \"must scanned list\".Allow it...... \n");
+          ci_debug_printf(8, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
      }
 
@@ -507,7 +507,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
                      PRINTF_OFF_T "...\n", scanned_data, body->endpos);
 
      if (ret == CL_VIRUS) {
-          ci_debug_printf(1, "VIRUS DETECTED:%s.\nTake action.......\n ",
+          ci_debug_printf(1, "VIRUS DETECTED: %s.\n ",
                           data->virus_name);
           if (!ci_req_sent_data(req))   /*If no data had sent we can send an error page  */
                generate_error_page(data, req);
@@ -515,12 +515,12 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
                endof_data_vir_mode(data, req);
           }
           else
-               ci_debug_printf(3, "Simply not send other data\n");
+               ci_debug_printf(3, "Simply no other data sent\n");
           return CI_MOD_DONE;
      }
      else if (ret != CL_CLEAN) {
           ci_debug_printf(1,
-                          "srvClamAv module:An error occured while scanning the data\n");
+                          "srvClamAv module: An error occured while scanning the data\n");
      }
 
      if (data->must_scanned == VIR_SCAN) {
@@ -558,7 +558,7 @@ int init_virusdb()
     }
 
      if(!(virusdb->db = cl_engine_new())) {
-	 ci_debug_printf(1, "Clamav DB load: Can't create new clamav engine\n");
+	 ci_debug_printf(1, "Clamav DB load: Cannot create new clamav engine\n");
 	 return 0;
      }
 
@@ -614,7 +614,7 @@ int reload_virusdb()
      unsigned int no = 0;
      ci_thread_mutex_lock(&db_mutex);
      if (old_virusdb) {
-          ci_debug_printf(1, "Clamav DB reload pending, canceling.\n");
+          ci_debug_printf(1, "Clamav DB reload pending, cancelling.\n");
           ci_thread_mutex_unlock(&db_mutex);
           return 0;
      }
@@ -628,7 +628,7 @@ int reload_virusdb()
      ci_debug_printf(9, "db_reload going to load db\n");
 #ifdef HAVE_LIBCLAMAV_095
      if(!(vdb->db = cl_engine_new())) {
-	 ci_debug_printf(1, "Clamav DB load: Can't create new clamav engine\n");
+	 ci_debug_printf(1, "Clamav DB load: Cannot create new clamav engine\n");
 	 return 0;
      }
      if ((ret = cl_load(cl_retdbdir(), vdb->db, &no, CL_DB_STDOPT))) {
@@ -708,7 +708,7 @@ void release_virusdb(CL_ENGINE * db)
           virusdb->refcount--;
      else if (old_virusdb && (db == old_virusdb->db)) {
           old_virusdb->refcount--;
-          ci_debug_printf(9, "Old VirusDB refcount:%d\n",
+          ci_debug_printf(9, "Old VirusDB refcount: %d\n",
                           old_virusdb->refcount);
           if (old_virusdb->refcount <= 0) {
 #ifdef HAVE_LIBCLAMAV_095
@@ -855,12 +855,12 @@ static const char *clamav_error_message =
 static const char *clamav_tail_message =
     "\n<p>This message generated by C-ICAP/" VERSION " srvClamAV/antivirus module\n"
     "<!-- And this is a silly HTML comment just to make this error bigger than 512 bytes \n"
-    "to allow it displayed in an IE. Yes the IE has a \"feature\" which does not allow \n"
-    "error messages smaller than 512 bytes displayed, because they are not considered \n"
-    "enough \"friendly\"\n"
+    "is allowed to be displayed in IE. Yes, IE has a \"feature\" which does not allow \n"
+    "error messages smaller than 512 bytes to be displayed, because they are not considered \n"
+    "\"friendly\" enough.\n"
     "\n"
-    "(Xmm...I think this stupid comment is better than empeding viruses or porn images in "
-    "this error message as a bad guy suggest me!)--> "
+    "(Hmm...I think this stupid comment is better than embedding viruses or porn images in "
+    "this error message like a bad guy suggested me!)--> "
     "</body>\n"
     "</html>\n";
 
@@ -964,7 +964,7 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 
      }
 
-     ci_debug_printf(1, "Iam going to scan data for %s scanning of type:",
+     ci_debug_printf(1, "I am going to scan data for %s scanning of type:",
                      (type == 1 ? "simple" : "vir_mode"));
      for (i = 0; i < ci_magic_types_num(magic_db); i++) {
           if (scantypes[i] == type)
