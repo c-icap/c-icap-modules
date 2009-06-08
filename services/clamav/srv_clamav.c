@@ -387,6 +387,9 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
      if (!data)
           return CI_ERROR;
 
+     if (!data->body) /*No body data? consume all content*/
+	 return len;
+
      if (data->must_scanned == NO_SCAN
 #ifdef VIRALATOR_MODE
          || data->must_scanned == VIR_SCAN
@@ -436,7 +439,10 @@ int srvclamav_write_to_net(char *buf, int len, ci_request_t * req)
      if (data->error_page)
           return ci_membuf_read(data->error_page, buf, len);
 
-     bytes = ci_simple_file_read(data->body, buf, len);
+     if(data->body)
+	 bytes = ci_simple_file_read(data->body, buf, len);
+     else
+	 bytes =0;
      return bytes;
 }
 
