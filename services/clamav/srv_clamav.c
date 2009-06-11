@@ -856,6 +856,10 @@ int must_scanned(int file_type, av_req_data_t * data)
           type = SCAN;
      else if (type == VIR_SCAN && data->args.mode == 1) /*in simple mode */
           type = SCAN;
+     else if (type == VIR_SCAN && (VIR_SAVE_DIR == NULL || VIR_HTTP_SERVER == NULL)) {
+	  ci_debug_printf(1, "Vir mode requested for this file type but \"VirSaveDir\" or/and \"VirHTTPServer\" is not set!");
+ 	  type = SCAN;
+     }
 
      return type;
 }
