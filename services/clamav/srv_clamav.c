@@ -108,7 +108,7 @@ int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata);
 /*Commands functions*/
 void dbreload_command(char *name, int type, char **argv);
 /*General functions*/
-int get_filetype(ci_request_t * req, char *buf, int len);
+int get_filetype(ci_request_t * req);
 int init_virusdb();
 CL_ENGINE *get_virusdb();
 void release_virusdb(CL_ENGINE *);
@@ -338,7 +338,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      }
 
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
-     file_type = get_filetype(req, preview_data, preview_data_len);
+     file_type = get_filetype(req);
      if ((data->must_scanned = must_scanned(file_type, data)) == 0) {
           ci_debug_printf(8, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
@@ -821,10 +821,13 @@ void set_istag(ci_service_xdata_t * srv_xdata)
 int ci_extend_filetype(struct ci_magics_db *db,
                        ci_request_t * req, char *buf, int len, int *iscompressed);
 
-int get_filetype(ci_request_t * req, char *buf, int len)
+int get_filetype(ci_request_t * req)
 {
      int iscompressed, filetype;
-     filetype = ci_extend_filetype(magic_db, req, buf, len, &iscompressed);
+      /*Use the ci_magic_req_data_type which caches the result*/
+      filetype = ci_magic_req_data_type(req, &iscompressed);
+
+
 /*     if iscompressed we do not care becouse clamav can understand zipped objects*/
 
 /*     Yes but what about deflate compression as encoding ??????
