@@ -362,8 +362,9 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
                ci_debug_printf(1,
                                "Object size is %" PRINTF_OFF_T " ."
                                " Bigger than max scannable file size (%"
-                               PRINTF_OFF_T "). Allow it.... \n", content_size,
-                               MAX_OBJECT_SIZE);
+                               PRINTF_OFF_T "). Allow it.... \n", 
+			       (CAST_OFF_T) content_size,
+                               (CAST_OFF_T) MAX_OBJECT_SIZE);
                return CI_MOD_ALLOW204;
           }
 
@@ -520,7 +521,8 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 
      ci_debug_printf(9,
                      "Clamav engine scanned %lu blocks of  data. Data size: %"
-                     PRINTF_OFF_T "...\n", scanned_data, body->endpos);
+                     PRINTF_OFF_T "...\n", 
+		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (ret == CL_VIRUS) {
           ci_debug_printf(1, "VIRUS DETECTED: %s.\n ",
@@ -550,7 +552,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      ci_simple_file_unlock_all(body);   /*Unlock all data to continue send them..... */
      ci_debug_printf(7,
                      "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
-                     body->flags, body->unlocked);
+                     body->flags, (CAST_OFF_T) body->unlocked);
      return CI_MOD_DONE;
 }
 

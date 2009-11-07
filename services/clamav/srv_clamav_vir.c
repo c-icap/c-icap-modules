@@ -98,7 +98,8 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
               snprintf(buf, len,
                        "Download your file(size=%" PRINTF_OFF_T
                        ") from <a href=\"%s%s\">%s</a> <br>",
-                       ci_simple_file_size(((av_req_data_t *) data)->body), url,
+                       (CAST_OFF_T) ci_simple_file_size(((av_req_data_t *) data)->body), 
+		       url,
                        filename,
                        (data->requested_filename ? data->
                         requested_filename : ((av_req_data_t *) data)->body->
@@ -118,13 +119,13 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
      ci_debug_printf(10,
                      "Downloaded %" PRINTF_OFF_T " bytes from %" PRINTF_OFF_T
                      " of data<br>",
-                     ci_simple_file_size(((av_req_data_t *) data)->body),
-                     ((av_req_data_t *) data)->expected_size);
+                     (CAST_OFF_T) ci_simple_file_size(((av_req_data_t *) data)->body),
+                     (CAST_OFF_T) ((av_req_data_t *) data)->expected_size);
      return snprintf(buf, len,
                      "Downloaded %" PRINTF_OFF_T " bytes from %" PRINTF_OFF_T
                      " of data<br>",
-                     ci_simple_file_size(((av_req_data_t *) data)->body),
-                     ((av_req_data_t *) data)->expected_size);
+                     (CAST_OFF_T) ci_simple_file_size(((av_req_data_t *) data)->body),
+                     (CAST_OFF_T) ((av_req_data_t *) data)->expected_size);
 }
 
 
