@@ -173,7 +173,7 @@ sg_db_t *sg_init_db(char *home)
     sg_db_t *sg_db;
     
     if(SGDB_T_POOL < 0 )
-	sg_db = ci_object_pool_register("sg_db_t", sizeof(sg_db_t));
+	SGDB_T_POOL = ci_object_pool_register("sg_db_t", sizeof(sg_db_t));
 
     if(SGDB_T_POOL < 0 )
 	return NULL;
@@ -235,7 +235,7 @@ void sg_close_db(sg_db_t *sg_db)
 int compdomainkey(char *dkey,char *domain,int dkey_len)
 {
     int domain_len=strlen(domain);
-    char *d_end,*k_end,*domain_pos;
+    char *d_end,*k_end;
 
     if(domain_len<dkey_len-1)
 	return 1;
