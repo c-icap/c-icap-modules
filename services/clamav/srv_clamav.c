@@ -819,10 +819,6 @@ void set_istag(ci_service_xdata_t * srv_xdata)
      ci_service_set_istag(srv_xdata, istag);
 }
 
-/* Content-Encoding: gzip*/
-int ci_extend_filetype(struct ci_magics_db *db,
-                       ci_request_t * req, char *buf, int len, int *iscompressed);
-
 int get_filetype(ci_request_t * req)
 {
      int iscompressed, filetype;
