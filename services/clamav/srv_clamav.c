@@ -525,7 +525,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (ret == CL_VIRUS) {
-          ci_debug_printf(1, "VIRUS DETECTED: %s.\n ",
+          ci_debug_printf(5, "VIRUS DETECTED: %s.\n ",
                           data->virus_name);
           if (!ci_req_sent_data(req))   /*If no data had sent we can send an error page  */
                generate_error_page(data, req);
@@ -533,7 +533,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
                endof_data_vir_mode(data, req);
           }
           else
-               ci_debug_printf(3, "Simply no other data sent\n");
+               ci_debug_printf(5, "Simply no other data sent\n");
           return CI_MOD_DONE;
      }
      else if (ret != CL_CLEAN) {
@@ -626,7 +626,6 @@ int init_virusdb()
 #undef DB_NO_FULL_LOCK
 int reload_virusdb()
 {
-    printf("Reloading.....");
      struct virus_db *vdb = NULL;
      int ret;
      unsigned int no = 0;
@@ -705,7 +704,6 @@ int reload_virusdb()
      virusdb = vdb;
      virusdb->refcount = 1;
      ci_thread_mutex_unlock(&db_mutex);
-     printf("Done Reloading!\n");
      return 1;
 }
 
@@ -985,15 +983,15 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 
      }
 
-     ci_debug_printf(1, "I am going to scan data for %s scanning of type:",
+     ci_debug_printf(2, "I am going to scan data for %s scanning of type:",
                      (type == 1 ? "simple" : "vir_mode"));
      for (i = 0; i < ci_magic_types_num(magic_db); i++) {
           if (scantypes[i] == type)
-               ci_debug_printf(1, ",%s", ci_data_type_name(magic_db, i));
+               ci_debug_printf(2, ",%s", ci_data_type_name(magic_db, i));
      }
      for (i = 0; i < ci_magic_groups_num(magic_db); i++) {
           if (scangroups[i] == type)
-               ci_debug_printf(1, ",%s", ci_data_group_name(magic_db, i));
+               ci_debug_printf(2, ",%s", ci_data_group_name(magic_db, i));
      }
      ci_debug_printf(1, "\n");
      return 1;
@@ -1016,7 +1014,7 @@ int cfg_SendPercentBytes(char *directive, char **argv, void *setdata)
      }
 
      SEND_PERCENT_BYTES = val;
-     ci_debug_printf(1, "Setting parameter :%s=%d\n", directive, val);
+     ci_debug_printf(2, "Setting parameter :%s=%d\n", directive, val);
      return val;
 }
 
@@ -1047,6 +1045,6 @@ int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
 #else
      cl_settempdir(argv[0], 0);
 #endif
-     ci_debug_printf(1, "Setting parameter :%s=%s\n", directive, argv[0]);
+     ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
      return val;
 }

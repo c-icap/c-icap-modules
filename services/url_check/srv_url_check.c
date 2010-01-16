@@ -512,7 +512,7 @@ struct lookup_db *search_lookup_db(char *name)
 void release_lookup_dbs()
 {
   struct lookup_db *tmp_ldb;
-  
+
   while((tmp_ldb = LOOKUP_DBS)){
     LOOKUP_DBS=LOOKUP_DBS->next;
     free(tmp_ldb->name);
@@ -550,7 +550,7 @@ struct profile *profile_check_add(char *name)
   tmp_profile->dbs=NULL;
   tmp_profile->next=PROFILES;
 
-  ci_debug_printf(1, "srv_url_check: Add profile :%s\n", name);
+  ci_debug_printf(2, "srv_url_check: Add profile :%s\n", name);
 
   return (PROFILES = tmp_profile);
 }
@@ -597,9 +597,12 @@ int profile_access(struct profile *prof, struct http_info *info)
 		      prof->name);
       return DB_ERROR;
     }
+    ci_debug_printf(5, "Going to check the db %s for %s \n", db->name, (adb->allow==0?"DENY":"ALLOW"));
 
-    if(db->lookup_db(db, info))
-      return adb->allow;
+    if (db->lookup_db(db, info)) {
+	ci_debug_printf(5, "The db :%s matches! \n", db->name);
+	return adb->allow;
+    }
     adb=adb->next;
   }
   return DB_ALLOW;
@@ -625,7 +628,7 @@ int cfg_profile(char *directive, char **argv, void *setdata)
     return 0;
   }
 
-  ci_debug_printf(1, "srv_url_check: Add dbs to profile %s: ", argv[0]);
+  ci_debug_printf(2, "srv_url_check: Add dbs to profile %s: ", argv[0]);
 
   for(i=2; argv[i] != NULL; i++) {
     db=search_lookup_db(argv[i]);
@@ -633,11 +636,11 @@ int cfg_profile(char *directive, char **argv, void *setdata)
       ci_debug_printf(1,"srv_url_check: WARNING the lookup db %s does not exists!\n", argv[i]);
     }
     else {
-      ci_debug_printf(1,"%s ",argv[i]);
+      ci_debug_printf(2,"%s ",argv[i]);
       profile_add_db(prof, db, type);
     }
   }
-  ci_debug_printf(1,"\n");
+  ci_debug_printf(2,"\n");
   return 1;
 }
 
@@ -656,9 +659,11 @@ void *sg_load_db(struct lookup_db *db, char *path)
 int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
+  ci_debug_printf(5, "sg_db: checking domain %s \n", http_info->site);
   if( sg_domain_exists(sg_db, http_info->site) )
     return 1;
 
+  ci_debug_printf(5, "sg_db: checking url %s \n", http_info->url);
   return sg_url_exists(sg_db,http_info->url);
 }
 
@@ -708,6 +713,7 @@ void *lt_load_db(struct lookup_db *db, char *path)
   lt_db = ci_lookup_table_create(path);
   if(!lt_db->open(lt_db)) {
     ci_lookup_table_destroy(lt_db);
+    lt_db = NULL;
   }
   return (db->db_data = (void *)lt_db);
 }
@@ -740,6 +746,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
       s--;   /* :-) */
       do {
 	  s++;
+	  ci_debug_printf(5, "Checking  domain %s ....\n", s);
 	  ret = lt_db->search(lt_db, s, &vals);
 	  lt_db->release_result(lt_db, vals);
       } while (!ret && (s=strchr(s, '.')));
@@ -781,7 +788,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 	  do {
 	      store = *e;
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
-	      ci_debug_printf(9,"Going to check: %s\n", s);
+	      ci_debug_printf(9,"Going to check url: %s\n", s);
 	      ret = lt_db->search(lt_db, s, &vals);
 	      lt_db->release_result(lt_db, vals);
 	      *e = store; /*... and restore string to its previous state :-), 
