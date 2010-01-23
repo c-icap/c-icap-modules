@@ -1022,7 +1022,6 @@ int cfg_SendPercentBytes(char *directive, char **argv, void *setdata)
 
 int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
 {
-     int val = 0;
      struct stat stat_buf;
      if (argv == NULL || argv[0] == NULL) {
           ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
@@ -1046,5 +1045,5 @@ int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
      cl_settempdir(argv[0], 0);
 #endif
      ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
-     return val;
+     return 1;
 }
