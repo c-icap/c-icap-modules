@@ -23,6 +23,8 @@
 #include "simple_api.h"
 #include "lookup_table.h"
 #include "debug.h"
+#include "access.h"
+#include "acl.h"
 #include "../../common.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
@@ -85,17 +87,18 @@ int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info);
 void release_lookup_dbs();
 
 #define DB_ERROR -1
-#define DB_DENY   0
-#define DB_ALLOW  1
+#define DB_BLOCK  0
+#define DB_PASS   1
 
 struct access_db {
   struct lookup_db *db;
-  int allow;
+  int pass;
   struct access_db *next;
 };
 
 struct profile {
   char *name;
+  ci_access_entry_t *access_list;
   struct access_db *dbs;
   struct profile *next;
 };
@@ -117,11 +120,13 @@ void url_check_close_service();
 
 /*Profile functions */
 struct profile *profile_search(char *name);
+struct profile *profile_select(ci_request_t *req);
 
 /*Config functions*/
 int cfg_load_sg_db(char *directive, char **argv, void *setdata);
 int cfg_load_lt_db(char *directive, char **argv, void *setdata);
 int cfg_profile(char *directive, char **argv, void *setdata);
+int cfg_profile_access(char *directive, char **argv, void *setdata);
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
 #if defined(HAVE_BDB)
@@ -129,6 +134,7 @@ static struct ci_conf_entry conf_variables[] = {
 #endif
   {"LookupTableDB", NULL, cfg_load_lt_db, NULL},
   {"Profile", NULL, cfg_profile, NULL},
+  {"ProfileAccess", NULL, cfg_profile_access, NULL},
   {NULL, NULL, NULL, NULL}
 };
 
@@ -326,27 +332,6 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 }
 
 int profile_access(struct profile *prof, struct http_info *info);
-int check_destination(struct http_info *httpinf)
-{
-  struct profile *profile;
-  int ret;
-  ci_debug_printf(9, "SITE: %s\n", httpinf->site);
-  ci_debug_printf(9, "URL: %s\n", httpinf->url);
-  
-  profile = profile_search("default");
-  
-  if(!profile) {
-    ci_debug_printf(1,"Profile default is not configured! Allow the request...\n");
-    return DB_ALLOW;
-  }
-
-  if((ret=profile_access(profile, httpinf)) == DB_ERROR) {
-    ci_debug_printf(1,"Error searching in profile! Allow the request\n");
-    return DB_ALLOW;
-  }
-
-  return ret;
-}
 
 static char *error_message = "<H1>Permition deny!<H1>";
 
@@ -356,7 +341,8 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      ci_headers_list_t *req_header;
      struct url_check_data *uc = ci_service_data(req);
      struct http_info httpinf;
-     int allow = 1;
+     struct profile *profile;
+     int pass = DB_PASS;
 
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
           return CI_ERROR;
@@ -367,10 +353,20 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      ci_debug_printf(9, "URL  to host %s\n", httpinf.site);
      ci_debug_printf(9, "URL  page %s\n", httpinf.url);
 
-     allow = check_destination(&httpinf);
+     profile = profile_select(req);
+
+     if (!profile) {
+          ci_debug_printf(1, "No Profile configured! Allowing the request...\n");
+	  return CI_MOD_ALLOW204;
+     }
+
+     if ((pass=profile_access(profile, &httpinf)) == DB_ERROR) {
+          ci_debug_printf(1,"Error searching in profile! Allow the request\n");
+	  return CI_MOD_ALLOW204;;
+     }
 
 
-     if (!allow) {
+     if (pass == DB_BLOCK) {
           /*The URL is not a good one so.... */
           ci_debug_printf(9, "Oh!!! we are going to deny this site.....\n");
 
@@ -525,6 +521,27 @@ void release_lookup_dbs()
 /*****************************************************************/
 /* Profile definitions                                           */
 
+struct profile *profile_select(ci_request_t *req)
+{
+  struct profile *tmp_profile, *default_profile;
+  default_profile = NULL;
+  tmp_profile = PROFILES;
+  while(tmp_profile) {
+
+    if (tmp_profile->access_list &&
+	(ci_access_entry_match_request(tmp_profile->access_list, 
+				       req) == CI_ACCESS_ALLOW)) {
+        return tmp_profile;
+    }
+    
+    if (strcmp(tmp_profile->name,"default")==0)
+        default_profile = tmp_profile;
+
+    tmp_profile = tmp_profile->next;
+  }
+  return default_profile;
+}
+
 struct profile *profile_search(char *name)
 {
   struct profile *tmp_profile;
@@ -546,9 +563,10 @@ struct profile *profile_check_add(char *name)
   /*Else create a new one and add it to the head of the list*/
   if(!(tmp_profile = malloc(sizeof(struct profile))))
     return NULL;
-  tmp_profile->name=strdup(name);
-  tmp_profile->dbs=NULL;
-  tmp_profile->next=PROFILES;
+  tmp_profile->name = strdup(name);
+  tmp_profile->access_list = NULL;
+  tmp_profile->dbs = NULL;
+  tmp_profile->next = PROFILES;
 
   ci_debug_printf(2, "srv_url_check: Add profile :%s\n", name);
 
@@ -563,7 +581,7 @@ struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int
   
   new_adb = malloc(sizeof(struct access_db));
   new_adb->db = db;
-  new_adb->allow = type;
+  new_adb->pass = type;
   new_adb->next = NULL;
   
   tmp_adb = prof->dbs;
@@ -597,15 +615,15 @@ int profile_access(struct profile *prof, struct http_info *info)
 		      prof->name);
       return DB_ERROR;
     }
-    ci_debug_printf(5, "Going to check the db %s for %s \n", db->name, (adb->allow==0?"DENY":"ALLOW"));
+    ci_debug_printf(5, "Going to check the db %s for %s \n", db->name, (adb->pass==0?"PASS":"BLOCK"));
 
     if (db->lookup_db(db, info)) {
 	ci_debug_printf(5, "The db :%s matches! \n", db->name);
-	return adb->allow;
+	return adb->pass;
     }
     adb=adb->next;
   }
-  return DB_ALLOW;
+  return DB_PASS;
 }
 
 int cfg_profile(char *directive, char **argv, void *setdata)
@@ -619,12 +637,12 @@ int cfg_profile(char *directive, char **argv, void *setdata)
   
   prof=profile_check_add(argv[0]);
 
-  if(strcasecmp(argv[1],"allow")==0)
-    type = DB_ALLOW;
-  else if(strcasecmp(argv[1],"deny")==0)
-    type = DB_DENY;
+  if(strcasecmp(argv[1],"pass")==0)
+    type = DB_PASS;
+  else if(strcasecmp(argv[1],"block")==0)
+    type = DB_BLOCK;
   else {
-    ci_debug_printf(1, "srv_url_check: Configuration error, expecting allow/deny got %s\n", argv[1]);
+    ci_debug_printf(1, "srv_url_check: Configuration error, expecting pass/block got %s\n", argv[1]);
     return 0;
   }
 
@@ -644,6 +662,46 @@ int cfg_profile(char *directive, char **argv, void *setdata)
   return 1;
 }
 
+int cfg_profile_access(char *directive, char **argv, void *setdata)
+{
+   struct profile *prof;
+   ci_access_entry_t *access_entry;
+   int argc, error;
+   char *acl_spec_name;
+
+   if(!argv[0] || !argv[1])
+    return 0;
+
+   if (!(prof = profile_search(argv[0]))) {
+       ci_debug_printf(1, "Error: Unknown profile %s!", argv[0]);
+       return 0;
+   }
+    
+   if ((access_entry = ci_access_entry_new(&(prof->access_list), 
+					   CI_ACCESS_ALLOW))  == NULL) {
+         ci_debug_printf(1, "Error creating access list for cfg profiles!\n");
+         return 0;
+     }
+   
+   error = 0;
+   for (argc = 1; argv[argc]!= NULL; argc++) {
+       acl_spec_name = argv[argc];
+          /*TODO: check return type.....*/
+          if (!ci_access_entry_add_acl_by_name(access_entry, acl_spec_name)) {
+	      ci_debug_printf(1,"Error adding acl spec: %s in profile %s."
+			        " Probably does not exist!\n", 
+			      acl_spec_name, prof->name);
+              error = 1;
+          }
+          else
+	    ci_debug_printf(2,"\tAdding acl spec: %s in profile %s\n", acl_spec_name, prof->name);
+     }
+
+     if (error)
+         return 0;
+
+     return 1;
+}
 
 /*****************************************************************/
 /* SguidGuard Databases                                          */
@@ -839,10 +897,12 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
       check = CHECK_FULL_URL;
   else if(strcmp(argv[1],"domain")==0)
     check = CHECK_DOMAIN;
+  /* Not yet implemented
   else if(strcmp(argv[1],"server_ip")==0)
       check = CHECK_SRV_IP;
   else if(strcmp(argv[1],"server_net")==0)
       check = CHECK_SRV_NET;
+  */
   else {
     ci_debug_printf(1, "Wrong argument %s for directive %s\n", 
 		    argv[1], directive);
