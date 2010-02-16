@@ -26,6 +26,7 @@
 #include "access.h"
 #include "acl.h"
 #include "../../common.h"
+#include "commands.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif
@@ -717,6 +718,10 @@ void *sg_load_db(struct lookup_db *db, char *path)
 int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
+  if (!sg_db) {
+       ci_debug_printf(1, "sg_db %s is not open? \n", ldb->name);
+       return 0;
+  }
   ci_debug_printf(5, "sg_db: checking domain %s \n", http_info->site);
   if( sg_domain_exists(sg_db, http_info->site) )
     return 1;
@@ -728,20 +733,42 @@ int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 void sg_release_db(struct lookup_db *ldb)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
+  if (!sg_db) {
+       ci_debug_printf(9, "sg_release_db: sg_db is not open? \n");
+       return;
+  }
   sg_close_db(sg_db);
   ldb->db_data = NULL;
+}
+
+struct command_sg_db_data {
+   char path[CI_MAX_PATH];
+   struct lookup_db *ldb;
+};
+
+void command_open_sg_db(char *name, int type, void *data)
+{
+  struct command_sg_db_data *sg_data;
+  struct lookup_db *ldb;
+  sg_db_t *sg_db;
+  sg_data = (struct command_sg_db_data *)data;
+  ldb = (struct lookup_db *)sg_data->ldb;
+  sg_db = sg_init_db(sg_data->path);
+  ldb->db_data = (void *)sg_db;
+
+  free(sg_data);
 }
 
 
 int cfg_load_sg_db(char *directive, char **argv, void *setdata) 
 {
   struct lookup_db *ldb;
+  struct command_sg_db_data *db_data;
 
   if (argv == NULL || argv[0] == NULL || argv[1] == NULL) {
     ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
     return 0;
   }
-
 
   ldb = new_lookup_db(argv[0], 
 		      DB_SG, 
@@ -749,11 +776,17 @@ int cfg_load_sg_db(char *directive, char **argv, void *setdata)
 		      sg_load_db,
 		      sg_lookup_db,
 		      sg_release_db);
+
+
   if(ldb) {
-    if(!ldb->load_db(ldb, argv[1])) {
-      free(ldb);
+    db_data = malloc(sizeof(struct command_sg_db_data));
+    if (!db_data)
       return 0;
-    }
+    strncpy(db_data->path, argv[1], CI_MAX_PATH);
+    db_data->path[CI_MAX_PATH-1] = '\0';
+    db_data->ldb = ldb;
+    register_command_extend("open_sg_db", CHILD_START_CMD, db_data,
+			    command_open_sg_db);
     return add_lookup_db(ldb);
   }
   
