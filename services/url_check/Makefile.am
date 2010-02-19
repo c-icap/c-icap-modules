@@ -1,6 +1,7 @@
 
 pkglib_LTLIBRARIES=srv_url_check.la
 INCLUDES = -I$(top_srcdir)
+CONFIGDIR = @CONFDIR@
 
 srv_url_check_la_LIBADD = @MODULES_LIBADD@
 srv_url_check_la_CFLAGS=  -I../../include/
@@ -13,5 +14,8 @@ if USEBDB
  srv_url_check_la_SOURCES += sguardDB.c
 endif
 
+install-data-local:
+	$(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf
 
-EXTRA_DIST= makefile.w32 srv_url_check.def
+
+EXTRA_DIST= sguardDB.h makefile.w32 srv_url_check.def srv_url_check.conf

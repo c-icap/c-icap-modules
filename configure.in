@@ -29,21 +29,30 @@ AC_ARG_WITH(c-icap,
     if test -f $withval/bin/c-icap-config; then
        cicapflags=`$withval/bin/c-icap-config --cflags`
        cicaplibs=`$withval/bin/c-icap-config --libs`
+       cicapetc=`$withval/bin/c-icap-config --configdir`
     else
        cicapflags=`c-icap-config --cflags`
        cicaplibs=`c-icap-config --libs` 
+       cicapetc=`$withval/bin/c-icap-config --configdir`
     fi
 ],
 )
 
 if test -z "$cicapdir"; then
-    cicapflags=`c-icap-config --cflags`
-    cicaplibs=`c-icap-config --libs` 
+    if c-icap-config >& /dev/null; then
+        cicapflags=`c-icap-config --cflags`
+        cicaplibs=`c-icap-config --libs` 
+        cicapetc=`c-icap-config --configdir`
+    else
+        echo "WARNING! c-icap-config not found"
+    fi
 fi
 
 CFLAGS="$CFLAGS $cicapflags"
 MODULES_LIBADD="$cicaplibs"
+CONFDIR="$cicapetc"
 AC_SUBST(MODULES_LIBADD)
+AC_SUBST(CONFDIR)
 
 # Checks for libraries
 
