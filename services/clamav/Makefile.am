@@ -1,8 +1,9 @@
 
-pkglib_LTLIBRARIES=srv_clamav.la
 INCLUDES = -I$(top_srcdir)
 CONFIGDIR = @CONFDIR@
 
+cicapmoduledir=@MODSDIR@
+cicapmodule_LTLIBRARIES=srv_clamav.la
 
 srv_clamav_la_LIBADD = @MODULES_LIBADD@ @clamavlib@ -lclamav
 srv_clamav_la_CFLAGS=  -I../../include/ @clamavinc@
