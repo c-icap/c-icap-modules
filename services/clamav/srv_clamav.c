@@ -386,6 +386,9 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 				  ci_req_hasalldata(req)) == CI_ERROR)
 	     return CI_ERROR;
      }
+
+     /*We are going to proceed scanning this object log its url*/
+     ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
      return CI_MOD_CONTINUE;
 }
 
@@ -486,6 +489,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      CL_ENGINE *vdb;
      ci_simple_file_t *body;
      const char *virname;
+     char *http_client_ip;
      int ret = 0;
      unsigned long scanned_data = 0;
 
@@ -525,8 +529,13 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (ret == CL_VIRUS) {
-          ci_debug_printf(5, "VIRUS DETECTED: %s.\n ",
-                          data->virus_name);
+	  http_client_ip = ci_headers_value(req->request_header, "X-Client-IP");
+          ci_debug_printf(1, "VIRUS DETECTED: %s , http client ip: %s, http user: %s, http url: %s \n ",
+                          data->virus_name,
+			  (http_client_ip != NULL? http_client_ip : "-"),
+			  (req->user[0] != '\0'? req->user: "-"),
+			  data->url_log
+	      );
           if (!ci_req_sent_data(req))   /*If no data had sent we can send an error page  */
                generate_error_page(data, req);
           else if (data->must_scanned == VIR_SCAN) {

@@ -3,7 +3,7 @@
 
 #define VIRALATOR_MODE
 
-
+#define LOG_URL_SIZE 256
 typedef struct av_req_data{
      ci_simple_file_t *body;
      ci_request_t *req;
@@ -12,6 +12,7 @@ typedef struct av_req_data{
      int virus_check_done;
      char *virus_name;
      ci_membuf_t *error_page;
+     char url_log[LOG_URL_SIZE];
 #ifdef VIRALATOR_MODE
      time_t last_update;
      char *requested_filename;
