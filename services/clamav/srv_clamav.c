@@ -339,6 +339,15 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
      file_type = get_filetype(req);
+
+     if (preview_data_len == 0 || file_type < 0) {
+	 ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
+	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s", 
+			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
+			 data->url_log);
+	 return CI_MOD_ALLOW204;
+     }
+
      if ((data->must_scanned = must_scanned(file_type, data)) == 0) {
           ci_debug_printf(8, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
@@ -846,15 +855,20 @@ int get_filetype(ci_request_t * req)
 
 int must_scanned(int file_type, av_req_data_t * data)
 {
+/* We are assuming that file_type is a valid file type.
+   The caller is responsible to pass a valid file_type value
+*/
      int type, i;
      int *file_groups;
      file_groups = ci_data_type_groups(magic_db, file_type);
      type = NO_SCAN;
      i = 0;
-     while (file_groups[i] >= 0 && i < MAX_GROUPS) {
-          if ((type = scangroups[file_groups[i]]) > 0)
-               break;
-          i++;
+     if (file_groups) {
+         while (file_groups[i] >= 0 && i < MAX_GROUPS) {
+	     if ((type = scangroups[file_groups[i]]) > 0)
+	       break;
+	     i++;
+	 }
      }
 
      if (type == NO_SCAN)
