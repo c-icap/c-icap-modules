@@ -193,15 +193,9 @@ sg_db_t *sg_init_db(char *home)
     }
 
     sg_db->domains_db = sg_open_db(sg_db->env_db, "domains.db", domainCompare);
-
-    if(sg_db->domains_db== NULL) {
-	sg_close_db(sg_db);
-	ci_object_pool_free(sg_db);
-	return NULL;
-    }
-
     sg_db->urls_db = sg_open_db(sg_db->env_db, "urls.db", compare_str);
-    if(sg_db->urls_db== NULL) {
+
+    if(sg_db->domains_db == NULL && sg_db->urls_db== NULL) {
 	sg_close_db(sg_db);
 	ci_object_pool_free(sg_db);
 	return NULL;
@@ -296,11 +290,17 @@ static int db_entry_exists(DB *dDB, char *entry,int (*cmpkey)(char *,char *,int 
 
 int sg_domain_exists(sg_db_t *sg_db, char *domain)
 {
+    if (!sg_db->domains_db)
+        return 0;
+
     return db_entry_exists(sg_db->domains_db,domain,compdomainkey);
 }
 
 int sg_url_exists(sg_db_t *sg_db, char *url)
 {
+    if (!sg_db->urls_db)
+        return 0;
+
     return db_entry_exists(sg_db->urls_db,url,compurlkey);
 }
 
