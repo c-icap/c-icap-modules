@@ -802,7 +802,7 @@ void *lt_load_db(struct lookup_db *db, char *path)
 {
   struct ci_lookup_table *lt_db;
   lt_db = ci_lookup_table_create(path);
-  if(!lt_db->open(lt_db)) {
+  if(lt_db && !lt_db->open(lt_db)) {
     ci_lookup_table_destroy(lt_db);
     lt_db = NULL;
   }
