@@ -16,7 +16,7 @@ typedef struct av_req_data{
 #ifdef VIRALATOR_MODE
      time_t last_update;
      char *requested_filename;
-     int page_sent;
+     int vir_mode_state;
      ci_off_t expected_size;
 #endif
      struct{
@@ -30,6 +30,9 @@ typedef struct av_req_data{
 enum {NO_SCAN=0,SCAN,VIR_SCAN};
 
 #ifdef VIRALATOR_MODE
+
+enum {VIR_ZERO, VIR_HEAD, VIR_MAIN, VIR_TAIL, VIR_END};
+
 void init_vir_mode_data(ci_request_t *req,av_req_data_t *data);
 int send_vir_mode_page(av_req_data_t *data,char *buf,int len,ci_request_t *req);
 void endof_data_vir_mode(av_req_data_t *data,ci_request_t *req);

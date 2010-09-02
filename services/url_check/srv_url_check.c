@@ -27,6 +27,8 @@
 #include "acl.h"
 #include "../../common.h"
 #include "commands.h"
+#include "txt_format.h"
+#include "txtTemplate.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif
@@ -123,6 +125,19 @@ void url_check_close_service();
 struct profile *profile_search(char *name);
 struct profile *profile_select(ci_request_t *req);
 
+
+/*********************/
+/* Formating table   */
+
+int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, char *param);
+int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, char *param);
+struct ci_fmt_entry srv_urlcheck_format_table [] = {
+    {"%UU", "The HTTP url", fmt_srv_urlcheck_http_url},
+    {"%UH", "The HTTP host", fmt_srv_urlcheck_host},
+    { NULL, NULL, NULL}
+};
+
+
 /*Config functions*/
 int cfg_load_sg_db(char *directive, char **argv, void *setdata);
 int cfg_load_lt_db(char *directive, char **argv, void *setdata);
@@ -158,6 +173,8 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 int URL_CHECK_DATA_POOL = -1;
 struct url_check_data {
      ci_cached_file_t *body;
+     struct http_info httpinf;
+     ci_membuf_t *error_page;
      int denied;
 };
 
@@ -200,6 +217,7 @@ void *url_check_init_request_data(ci_request_t * req)
 {
      struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
      uc->body = NULL;
+     uc->error_page = NULL;
      uc->denied = 0;
      return uc;      /*Get from a pool of pre-allocated structs better...... */
 }
@@ -210,6 +228,9 @@ void url_check_release_data(void *data)
      struct url_check_data *uc = data;
      if (uc->body)
           ci_cached_file_destroy(uc->body);
+
+     if(uc->error_page)
+	 ci_membuf_free(uc->error_page);
      ci_object_pool_free(uc);    /*Return object to pool..... */
 }
 
@@ -276,7 +297,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
       */
      if ((tmp=strstr(str,"://"))) {	 
 	 proxy_mode=1;
-	 httpinf->proto = get_protocol(str,str-tmp);
+	 httpinf->proto = get_protocol(str, tmp-str);
 	 str = tmp+3;
 	 i=0;
 	 while(*str!=':' && *str!= '/' && i < CI_MAXHOSTNAMELEN){
@@ -299,6 +320,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 	 strcpy(httpinf->url, httpinf->host);
 	 strcpy(httpinf->site, httpinf->host);
 	 httpinf->port = 80;
+	 httpinf->proto = HTTP;
      }
 
      i = strlen(httpinf->url);
@@ -334,25 +356,22 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 
 int profile_access(struct profile *prof, struct http_info *info);
 
-static char *error_message = "<H1>Permition deny!<H1>";
-
 int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t * req)
 {
      ci_headers_list_t *req_header;
-     struct url_check_data *uc = ci_service_data(req);
-     struct http_info httpinf;
+     struct url_check_data *uc = ci_service_data(req);     
      struct profile *profile;
      int pass = DB_PASS;
 
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
           return CI_ERROR;
 
-     if (!get_http_info(req, req_header, &httpinf)) /*Unknown method or something else...*/
+     if (!get_http_info(req, req_header, &uc->httpinf)) /*Unknown method or something else...*/
 	 return CI_MOD_ALLOW204;
 
-     ci_debug_printf(9, "URL  to host %s\n", httpinf.site);
-     ci_debug_printf(9, "URL  page %s\n", httpinf.url);
+     ci_debug_printf(9, "URL  to host %s\n", uc->httpinf.site);
+     ci_debug_printf(9, "URL  page %s\n", uc->httpinf.url);
 
      profile = profile_select(req);
 
@@ -361,7 +380,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
 	  return CI_MOD_ALLOW204;
      }
 
-     if ((pass=profile_access(profile, &httpinf)) == DB_ERROR) {
+     if ((pass=profile_access(profile, &uc->httpinf)) == DB_ERROR) {
           ci_debug_printf(1,"Error searching in profile! Allow the request\n");
 	  return CI_MOD_ALLOW204;;
      }
@@ -372,7 +391,6 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_debug_printf(9, "Oh!!! we are going to deny this site.....\n");
 
           uc->denied = 1;
-          uc->body = ci_cached_file_new(strlen(error_message) + 10);
           ci_http_response_create(req, 1, 1); /*Build the responce headers */
 
           ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
@@ -381,9 +399,10 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_http_response_add_header(req, "Content-Language: en");
           ci_http_response_add_header(req, "Connection: close");
 
-          ci_cached_file_write(uc->body, error_message, strlen(error_message),
-                               1);
-
+	  uc->error_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
+	  /*Are we sure that the txt_template code does not return a NULL page?
+	    Well, yes ... no ....
+	   */
      }
      else {
           /*if we are inside preview negotiation or client allow204 responces oudsite of preview then */
@@ -422,10 +441,13 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
 {
      int ret;
      struct url_check_data *uc = ci_service_data(req);
-     if (!uc->body)
+
+     /*Here we are only if we */
+     if (!uc->body && !uc->error_page)
           return CI_ERROR;
 
      ret = CI_OK;
+
      if (uc->denied == 0) {
           if (rbuf && rlen) {
                *rlen = ci_cached_file_write(uc->body, rbuf, *rlen, iseof);
@@ -436,10 +458,24 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                ci_cached_file_write(uc->body, NULL, 0, iseof);
      }
 
-     if (wbuf && wlen) {
+     if (uc->body && wbuf && wlen) {
           *wlen = ci_cached_file_read(uc->body, wbuf, *wlen);
           if (*wlen == CI_ERROR)
                ret = CI_ERROR;
+     }
+     else if (uc->error_page && wbuf && wlen) {
+	 *wlen = ci_membuf_read(uc->error_page, wbuf, *wlen);
+	 if (*wlen == CI_ERROR)
+	      ret = CI_ERROR;
+
+	 if(*wlen == 0)
+	     *wlen = CI_EOF;
+
+	 /* 
+	    also we are leaving untouched the *rlen to drop all incomming data.
+	    The *rlen should modified to the bytes read from this function,
+	    leaving untouched  means that we are read all data
+	  */
      }
 
      return ret;
@@ -964,4 +1000,20 @@ int cfg_load_lt_db(char *directive, char **argv, void *setdata)
 int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 {
   return 1;
+}
+
+
+/*****************************/
+/* Formating table functions */
+int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, char *param)
+{
+    struct url_check_data *uc = ci_service_data(req);  
+    /*Do notwrite more than 512 bytes*/
+    return snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uc->httpinf.url);
+}
+
+int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, char *param)
+{
+    struct url_check_data *uc = ci_service_data(req);  
+    return snprintf(buf, len, "%s", uc->httpinf.host);
 }
