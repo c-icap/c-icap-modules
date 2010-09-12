@@ -574,11 +574,27 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 			  (req->user[0] != '\0'? req->user: "-"),
 			  data->url_log
 	      );
-          if (!ci_req_sent_data(req))   /*If no data had sent we can send an error page  */
+          if (!ci_req_sent_data(req)) {   /*If no data had sent we can send an error page  */
+#ifdef VIRALATOR_MODE
+              if (data->must_scanned == VIR_SCAN) {
+                  /*For file types required the virelator mode then the error page with the 
+                    head data already exist. Release it first. */
+                  if (data->error_page) {
+                      ci_membuf_free(data->error_page);                  
+                      data->error_page = NULL;
+                  }
+                  /* ... do other virmode releases if required ...*/
+                  /* Go back to normal scan mode*/
+                  data->must_scanned = SCAN;
+              }
+#endif /*VIRELATOR_MODE*/
                generate_error_page(data, req);
+          }
+#ifdef VIRALATOR_MODE
           else if (data->must_scanned == VIR_SCAN) {
                endof_data_vir_mode(data, req);
           }
+#endif /*VIRELATOR_MODE*/
           else
                ci_debug_printf(5, "Simply no other data sent\n");
           return CI_MOD_DONE;
@@ -588,13 +604,16 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
                           "srvClamAv module: An error occured while scanning the data\n");
      }
 
+#ifdef VIRALATOR_MODE
      if (data->must_scanned == VIR_SCAN) {
           endof_data_vir_mode(data, req);
      }
-     else if (data->allow204 && !ci_req_sent_data(req)) {
-          ci_debug_printf(7, "srvClamAv module: Respond with allow 204\n");
-          return CI_MOD_ALLOW204;
-     }
+     else 
+#endif /* VIRELATOR_MODE */
+         if (data->allow204 && !ci_req_sent_data(req)) {
+             ci_debug_printf(7, "srvClamAv module: Respond with allow 204\n");
+             return CI_MOD_ALLOW204;
+         }
 
      ci_simple_file_unlock_all(body);   /*Unlock all data to continue send them..... */
      ci_debug_printf(7,
@@ -941,7 +960,7 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
 
      error_page = ci_txt_template_build_content(req, "srv_clamav", "VIRUS_FOUND",
                            srv_clamav_format_table);
-     ((av_req_data_t *) data)->error_page = error_page;
+     data->error_page = error_page;
 }
 
 /***************************************************************************************/

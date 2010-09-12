@@ -32,6 +32,7 @@
 #include <errno.h>
 #include "srv_clamav.h"
 #include "../../common.h"
+#include <assert.h>
 
 extern char *VIR_SAVE_DIR;
 extern char *VIR_HTTP_SERVER;
@@ -72,6 +73,7 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
      error_page = ci_txt_template_build_content(req, "srv_clamav", "VIR_MODE_HEAD",
 						srv_clamav_format_table);
 
+     assert( data->error_page==NULL);
      data->error_page = error_page;
      data->vir_mode_state = VIR_HEAD;
      ci_req_unlock_data(req);
@@ -83,6 +85,12 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
 {
      int ret;
      ci_membuf_t *error_page;
+
+     if (data->vir_mode_state == VIR_END) {
+         data->vir_mode_state = VIR_END;
+         ci_debug_printf(3, "viralator:EOF already received, nothing to do (why am I called?)\n");
+         return CI_EOF;
+     }
 
      if (data->error_page) {
          ret = ci_membuf_read(data->error_page, buf, len);
