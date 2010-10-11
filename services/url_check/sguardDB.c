@@ -103,7 +103,7 @@ DB_ENV *db_setup(char *home)
     //     } 
 
     /* Open the environment  */ 
-    if ((ret = dbenv->open(dbenv, home, DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL /*| DB_SYSTEM_MEM*/, 0)) != 0){ 
+    if ((ret = dbenv->open(dbenv, home, DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL|DB_THREAD /*| DB_SYSTEM_MEM*/, 0)) != 0){ 
 	ci_debug_printf(1, "Environment open failed: %s\n", db_strerror(ret));
 	dbenv->close(dbenv, 0); 
 	return NULL; 
@@ -153,7 +153,7 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 
 #if(DB_VERSION_MINOR>=1)
     if ((ret = dbp->open( dbp, NULL, filename, NULL,
-			  DB_BTREE, DB_RDONLY, 0)) != 0)
+			  DB_BTREE, DB_RDONLY|DB_THREAD, 0)) != 0)
 #else
 	if ((ret = dbp->open( dbp, filename, NULL,
 			      DB_BTREE, DB_RDONLY, 0)) != 0)
