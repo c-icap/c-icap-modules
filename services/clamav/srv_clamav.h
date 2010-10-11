@@ -17,8 +17,8 @@ typedef struct av_req_data{
      time_t last_update;
      char *requested_filename;
      int vir_mode_state;
-     ci_off_t expected_size;
 #endif
+     ci_off_t expected_size;
      struct{
 	  int enable204;
 	  int forcescan;

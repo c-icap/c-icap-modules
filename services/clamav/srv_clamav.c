@@ -41,7 +41,7 @@
 #define CL_ENGINE struct cl_node
 #endif
 
-int must_scanned(int type, av_req_data_t * data);
+int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len);
 
 struct virus_db {
      CL_ENGINE *db;
@@ -356,7 +356,6 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t * req)
 {
      ci_off_t content_size = 0;
-     int file_type;
      av_req_data_t *data = ci_service_data(req);
 
      ci_debug_printf(9, "OK; the preview data size is %d\n", preview_data_len);
@@ -366,46 +365,22 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
           return CI_MOD_ALLOW204;
      }
 
-     /*Going to determine the file type,get_filetype can take preview_data as null ....... */
-     file_type = get_filetype(req);
+     /*Compute the expected size, will be used by must_scanned*/
+     content_size = ci_http_content_length(req);
+     data->expected_size = content_size;
 
-     if (preview_data_len == 0 || file_type < 0) {
-	 ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
-	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s", 
-			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
-			 data->url_log);
-	 return CI_MOD_ALLOW204;
-     }
-
-     if ((data->must_scanned = must_scanned(file_type, data)) == 0) {
+     /*must_scanned will fill the data->must_scanned field*/
+     if (must_scanned(req, preview_data, preview_data_len) == NO_SCAN) {
           ci_debug_printf(8, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
      }
 
-     content_size = ci_http_content_length(req);
 #ifdef VIRALATOR_MODE
-     /*Lets see ........... */
-     if (data->must_scanned == VIR_SCAN && ci_req_type(req) != ICAP_RESPMOD)
-          data->must_scanned = SCAN;
-
      if (data->must_scanned == VIR_SCAN) {
           init_vir_mode_data(req, data);
-          data->expected_size = content_size;
      }
      else {
 #endif
-
-          if (data->args.sizelimit && MAX_OBJECT_SIZE
-              && content_size > MAX_OBJECT_SIZE) {
-               ci_debug_printf(1,
-                               "Object size is %" PRINTF_OFF_T " ."
-                               " Bigger than max scannable file size (%"
-                               PRINTF_OFF_T "). Allow it.... \n", 
-			       (CAST_OFF_T) content_size,
-                               (CAST_OFF_T) MAX_OBJECT_SIZE);
-               return CI_MOD_ALLOW204;
-          }
-
           data->body = ci_simple_file_new(MAX_OBJECT_SIZE);
 
           if (SEND_PERCENT_BYTES >= 0 && START_SEND_AFTER == 0) {
@@ -905,36 +880,70 @@ int get_filetype(ci_request_t * req)
      return filetype;
 }
 
-int must_scanned(int file_type, av_req_data_t * data)
+int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 {
 /* We are assuming that file_type is a valid file type.
    The caller is responsible to pass a valid file_type value
 */
      int type, i;
      int *file_groups;
-     file_groups = ci_data_type_groups(magic_db, file_type);
+     int file_type;
+     av_req_data_t * data  = ci_service_data(req);;
+
+     /*By default do not scan*/
      type = NO_SCAN;
-     i = 0;
-     if (file_groups) {
-         while (file_groups[i] >= 0 && i < MAX_GROUPS) {
-	     if ((type = scangroups[file_groups[i]]) > 0)
-	       break;
-	     i++;
-	 }
+     /*Going to determine the file type,get_filetype can take preview_data as null ....... */
+     file_type = get_filetype(req);
+     
+     if (preview_data_len == 0 || file_type < 0) {
+	 ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
+	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n", 
+			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
+			 data->url_log);
+         /*
+           By default do not scan when you are not able to retrieve filetype.
+           TODO: Define configuration parameters to allow user decide if such 
+                      objects must scanned or not.
+          */
+     } 
+     else { /*We have a valid filetype*/
+         file_groups = ci_data_type_groups(magic_db, file_type);
+         i = 0;
+         if (file_groups) {
+             while (file_groups[i] >= 0 && i < MAX_GROUPS) {
+                 if ((type = scangroups[file_groups[i]]) > 0)
+                     break;
+                 i++;
+             }
+         }
+
+         if (type == NO_SCAN)
+             type = scantypes[file_type];
      }
 
-     if (type == NO_SCAN)
-          type = scantypes[file_type];
-
-     if (type == 0 && data->args.forcescan)
+     if (type == NO_SCAN && data->args.forcescan)
           type = SCAN;
      else if (type == VIR_SCAN && data->args.mode == 1) /*in simple mode */
           type = SCAN;
+     else if (type == VIR_SCAN && ci_req_type(req) != ICAP_RESPMOD)
+          type = SCAN; /*Vir mode will not work in REQMOD requests*/
      else if (type == VIR_SCAN && (VIR_SAVE_DIR == NULL || VIR_HTTP_SERVER == NULL)) {
 	  ci_debug_printf(1, "Vir mode requested for this file type but \"VirSaveDir\" or/and \"VirHTTPServer\" is not set!");
  	  type = SCAN;
      }
-
+     
+     if (type == SCAN && data->args.sizelimit && MAX_OBJECT_SIZE &&
+         data->expected_size > MAX_OBJECT_SIZE) {
+         ci_debug_printf(1,
+                         "Object size is %" PRINTF_OFF_T " ."
+                         " Bigger than max scannable file size (%"
+                         PRINTF_OFF_T "). Allow it.... \n", 
+                         (CAST_OFF_T) data->expected_size,
+                         (CAST_OFF_T) MAX_OBJECT_SIZE);
+         type = NO_SCAN;
+     }
+     
+     data->must_scanned = type;
      return type;
 }
 
