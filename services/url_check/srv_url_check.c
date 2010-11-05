@@ -945,7 +945,9 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info)
 void lt_release_db(struct lookup_db *ldb)
 {
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
-  lt_db->close(lt_db);
+  ci_debug_printf(5, "Destroy lookup table %s\n", lt_db->path);
+  ci_lookup_table_destroy(lt_db);
+  ldb->db_data = NULL;
 }
 
 
