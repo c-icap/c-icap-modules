@@ -267,7 +267,9 @@ int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
 void srvclamav_close_service()
 {
      free(scantypes);
+     scantypes = NULL;
      free(scangroups);
+     scangroups = NULL;
      ci_object_pool_unregister(AVREQDATA_POOL);
      destroy_virusdb();
 }
