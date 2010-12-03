@@ -383,7 +383,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      }
      else {
 #endif
-          data->body = ci_simple_file_new(MAX_OBJECT_SIZE);
+          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : MAX_OBJECT_SIZE);
 
           if (SEND_PERCENT_BYTES >= 0 && START_SEND_AFTER == 0) {
                ci_req_unlock_data(req); /*Icap server can send data before all body has received */
