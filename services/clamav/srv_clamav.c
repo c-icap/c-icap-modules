@@ -287,7 +287,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
           ci_debug_printf(5, "service arguments:%s\n", req->args);
      }
      if (ci_req_hasbody(req)) {
-          ci_debug_printf(8, "Request type: %d. Preview size:%d\n", req->type,
+          ci_debug_printf(5, "Request type: %d. Preview size:%d\n", req->type,
                           preview_size);
           if (!(data = ci_object_pool_alloc(AVREQDATA_POOL))) {
                ci_debug_printf(1,
@@ -332,7 +332,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
 void srvclamav_release_request_data(void *data)
 {
      if (data) {
-          ci_debug_printf(8, "Releasing srv_clamav data.....\n");
+          ci_debug_printf(5, "Releasing srv_clamav data.....\n");
 #ifdef VIRALATOR_MODE
           if (((av_req_data_t *) data)->must_scanned == VIR_SCAN) {
                ci_simple_file_release(((av_req_data_t *) data)->body);
@@ -360,10 +360,10 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      ci_off_t content_size = 0;
      av_req_data_t *data = ci_service_data(req);
 
-     ci_debug_printf(9, "OK; the preview data size is %d\n", preview_data_len);
+     ci_debug_printf(6, "OK; the preview data size is %d\n", preview_data_len);
 
      if (!data || !ci_req_hasbody(req)){
-	 ci_debug_printf(9, "No body data, allow 204\n");
+	 ci_debug_printf(6, "No body data, allow 204\n");
           return CI_MOD_ALLOW204;
      }
 
@@ -373,7 +373,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 
      /*must_scanned will fill the data->must_scanned field*/
      if (must_scanned(req, preview_data, preview_data_len) == NO_SCAN) {
-          ci_debug_printf(8, "Not in scan list. Allow it...... \n");
+          ci_debug_printf(6, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
      }
 
@@ -430,9 +430,19 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 
      if (data->args.sizelimit
          && ci_simple_file_size(data->body) >= MAX_OBJECT_SIZE) {
+         ci_debug_printf(5, "Object bigger than max scanable file. \n");
           data->must_scanned = 0;
-          ci_req_unlock_data(req);      /*Allow ICAP to send data before receives the EOF....... */
-          ci_simple_file_unlock_all(data->body);        /*Unlock all body data to continue send them..... */
+
+          if(data->args.mode == 1){ 
+              /*We are in simple mode we can not send early ICAP responses. What?*/
+              ci_debug_printf(1, "Object does not fit to max object size and early responses are not allowed! \n");
+              return CI_ERROR;
+          }
+          else { /*Send early response.*/
+              ci_req_unlock_data(req);      /*Allow ICAP to send data before receives the EOF....... */
+              ci_simple_file_unlock_all(data->body);        /*Unlock all body data to continue send them..... */
+          }
+
      }                          /*else Allow transfer SEND_PERCENT_BYTES of the data */
      else if (data->args.mode != 1 &&   /*not in the simple mode */
               SEND_PERCENT_BYTES
@@ -519,7 +529,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      }
 
 
-     ci_debug_printf(8, "Scan from file\n");
+     ci_debug_printf(6, "Scan from file\n");
      lseek(body->fd, 0, SEEK_SET);
      vdb = get_virusdb();
 #ifndef HAVE_LIBCLAMAV_095
@@ -538,7 +548,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      }
      release_virusdb(vdb);
 
-     ci_debug_printf(9,
+     ci_debug_printf(6,
                      "Clamav engine scanned %lu blocks of  data. Data size: %"
                      PRINTF_OFF_T "...\n", 
 		     scanned_data, (CAST_OFF_T) body->endpos);
@@ -588,12 +598,12 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      else 
 #endif /* VIRELATOR_MODE */
          if (data->allow204 && !ci_req_sent_data(req)) {
-             ci_debug_printf(7, "srvClamAv module: Respond with allow 204\n");
+             ci_debug_printf(6, "srvClamAv module: Respond with allow 204\n");
              return CI_MOD_ALLOW204;
          }
 
      ci_simple_file_unlock_all(body);   /*Unlock all data to continue send them..... */
-     ci_debug_printf(7,
+     ci_debug_printf(6,
                      "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
                      body->flags, (CAST_OFF_T) body->unlocked);
      return CI_MOD_DONE;
@@ -685,7 +695,7 @@ int reload_virusdb()
      if (!vdb)
           return 0;
      memset(vdb, 0, sizeof(struct virus_db));
-     ci_debug_printf(9, "db_reload going to load db\n");
+     ci_debug_printf(2, "db_reload command, going to load db\n");
 #ifdef HAVE_LIBCLAMAV_095
      if(!(vdb->db = cl_engine_new())) {
 	 ci_debug_printf(1, "Clamav DB load: Cannot create new clamav engine\n");
@@ -705,7 +715,7 @@ int reload_virusdb()
 #endif
           return 0;
      }
-     ci_debug_printf(9, "loaded. Going to build\n");
+     ci_debug_printf(2, "Clamav DB loaded. Going to build\n");
 #ifdef HAVE_LIBCLAMAV_095
      if ((ret = cl_engine_compile(vdb->db))) {
 #else
@@ -728,7 +738,7 @@ int reload_virusdb()
 #endif
           return 0;
      }
-     ci_debug_printf(9, "Done releasing.....\n");
+     ci_debug_printf(2, "Loading Clamav DB done. Releasing old DB.....\n");
 #ifdef DB_NO_FULL_LOCK
      ci_thread_mutex_lock(&db_mutex);
 #endif
@@ -767,7 +777,7 @@ void release_virusdb(CL_ENGINE * db)
           virusdb->refcount--;
      else if (old_virusdb && (db == old_virusdb->db)) {
           old_virusdb->refcount--;
-          ci_debug_printf(9, "Old VirusDB refcount: %d\n",
+          ci_debug_printf(3, "Old VirusDB refcount: %d\n",
                           old_virusdb->refcount);
           if (old_virusdb->refcount <= 0) {
 #ifdef HAVE_LIBCLAMAV_095
