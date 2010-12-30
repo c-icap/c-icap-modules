@@ -32,6 +32,7 @@
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif
+#include "url_check_body.h"
 
 /*Structs for this module */
 enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
@@ -107,6 +108,7 @@ struct profile {
 };
 
 struct profile *PROFILES = NULL;
+int EARLY_RESPONSES = 1;
 
 int url_check_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
@@ -151,6 +153,7 @@ static struct ci_conf_entry conf_variables[] = {
   {"LookupTableDB", NULL, cfg_load_lt_db, NULL},
   {"Profile", NULL, cfg_profile, NULL},
   {"ProfileAccess", NULL, cfg_profile_access, NULL},
+  {"EarlyResponses", &EARLY_RESPONSES, ci_cfg_onoff, NULL},
   {NULL, NULL, NULL, NULL}
 };
 
@@ -172,7 +175,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 
 int URL_CHECK_DATA_POOL = -1;
 struct url_check_data {
-     ci_cached_file_t *body;
+     struct body_data body;
      struct http_info httpinf;
      ci_membuf_t *error_page;
      int denied;
@@ -216,9 +219,9 @@ void url_check_close_service()
 void *url_check_init_request_data(ci_request_t * req)
 {
      struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
-     uc->body = NULL;
      uc->error_page = NULL;
      uc->denied = 0;
+     memset(&uc->body, 0, sizeof(struct body_data));
      return uc;      /*Get from a pool of pre-allocated structs better...... */
 }
 
@@ -226,8 +229,8 @@ void *url_check_init_request_data(ci_request_t * req)
 void url_check_release_data(void *data)
 {
      struct url_check_data *uc = data;
-     if (uc->body)
-          ci_cached_file_destroy(uc->body);
+     if (uc->body.type)
+          body_data_destroy(&uc->body);
 
      if(uc->error_page)
 	 ci_membuf_free(uc->error_page);
@@ -362,6 +365,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      ci_headers_list_t *req_header;
      struct url_check_data *uc = ci_service_data(req);     
      struct profile *profile;
+     int clen = 0;
      int pass = DB_PASS;
 
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
@@ -415,8 +419,8 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
              Allocate a new body for it 
            */
           if (ci_req_hasbody(req)) {
-               int clen = ci_http_content_length(req) + 100;
-               uc->body = ci_cached_file_new(clen);
+               clen = ci_http_content_length(req);
+               body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen);
           }
 
      }
@@ -443,23 +447,28 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      struct url_check_data *uc = ci_service_data(req);
 
      /*Here we are only if we */
-     if (!uc->body && !uc->error_page)
+     if (!uc->body.type && !uc->error_page)
           return CI_ERROR;
 
      ret = CI_OK;
 
      if (uc->denied == 0) {
-          if (rbuf && rlen) {
-               *rlen = ci_cached_file_write(uc->body, rbuf, *rlen, iseof);
-               if (*rlen == CI_ERROR)
-                    ret = CI_ERROR;
-          }
-          else if (iseof)
-               ci_cached_file_write(uc->body, NULL, 0, iseof);
+         if (rlen && rbuf) {
+             *rlen = body_data_write(&uc->body, rbuf, *rlen, iseof);
+             if (*rlen == CI_ERROR)
+                 ret = CI_ERROR;
+         }
+         else if (iseof)
+             body_data_write(&uc->body, NULL, 0, iseof); /*should return ret = CI_OK*/
      }
 
-     if (uc->body && wbuf && wlen) {
-          *wlen = ci_cached_file_read(uc->body, wbuf, *wlen);
+     if ( !EARLY_RESPONSES && !body_data_haseof((&uc->body))) {
+         *wlen = 0;
+         ci_debug_printf(9, "Does not allow early responses, wait for eof before send data\n")
+         return ret;
+     }
+     if (uc->body.type && wbuf && wlen) {
+          *wlen = body_data_read(&uc->body, wbuf, *wlen);
           if (*wlen == CI_ERROR)
                ret = CI_ERROR;
      }
