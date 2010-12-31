@@ -177,7 +177,6 @@ int URL_CHECK_DATA_POOL = -1;
 struct url_check_data {
      struct body_data body;
      struct http_info httpinf;
-     ci_membuf_t *error_page;
      int denied;
 };
 
@@ -219,7 +218,6 @@ void url_check_close_service()
 void *url_check_init_request_data(ci_request_t * req)
 {
      struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
-     uc->error_page = NULL;
      uc->denied = 0;
      memset(&uc->body, 0, sizeof(struct body_data));
      return uc;      /*Get from a pool of pre-allocated structs better...... */
@@ -232,8 +230,6 @@ void url_check_release_data(void *data)
      if (uc->body.type)
           body_data_destroy(&uc->body);
 
-     if(uc->error_page)
-	 ci_membuf_free(uc->error_page);
      ci_object_pool_free(uc);    /*Return object to pool..... */
 }
 
@@ -363,6 +359,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t * req)
 {
      ci_headers_list_t *req_header;
+     ci_membuf_t *err_page;
      struct url_check_data *uc = ci_service_data(req);     
      struct profile *profile;
      int clen = 0;
@@ -403,10 +400,11 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_http_response_add_header(req, "Content-Language: en");
           ci_http_response_add_header(req, "Connection: close");
 
-	  uc->error_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
+	  err_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
 	  /*Are we sure that the txt_template code does not return a NULL page?
-	    Well, yes ... no ....
+	    Well, yes ...
 	   */
+          body_data_init(&uc->body, ERROR_PAGE, 0, err_page);
      }
      else {
           /*if we are inside preview negotiation or client allow204 responces oudsite of preview then */
@@ -420,7 +418,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
            */
           if (ci_req_hasbody(req)) {
                clen = ci_http_content_length(req);
-               body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen);
+               body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen, NULL);
           }
 
      }
@@ -447,44 +445,29 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      struct url_check_data *uc = ci_service_data(req);
 
      /*Here we are only if we */
-     if (!uc->body.type && !uc->error_page)
+     if (!uc->body.type)
           return CI_ERROR;
 
      ret = CI_OK;
 
-     if (uc->denied == 0) {
-         if (rlen && rbuf) {
-             *rlen = body_data_write(&uc->body, rbuf, *rlen, iseof);
-             if (*rlen == CI_ERROR)
+     if (rlen && rbuf) {
+         *rlen = body_data_write(&uc->body, rbuf, *rlen, iseof);
+         if (*rlen == CI_ERROR)
+             ret = CI_ERROR;
+     }
+     else if (iseof)
+         body_data_write(&uc->body, NULL, 0, iseof); /*should return ret = CI_OK*/
+
+     if (uc->body.type && wbuf && wlen) {
+         if (EARLY_RESPONSES || body_data_haseof((&uc->body))) {
+             *wlen = body_data_read(&uc->body, wbuf, *wlen);
+             if (*wlen == CI_ERROR)
                  ret = CI_ERROR;
          }
-         else if (iseof)
-             body_data_write(&uc->body, NULL, 0, iseof); /*should return ret = CI_OK*/
-     }
-
-     if ( !EARLY_RESPONSES && !body_data_haseof((&uc->body))) {
-         *wlen = 0;
-         ci_debug_printf(9, "Does not allow early responses, wait for eof before send data\n")
-         return ret;
-     }
-     if (uc->body.type && wbuf && wlen) {
-          *wlen = body_data_read(&uc->body, wbuf, *wlen);
-          if (*wlen == CI_ERROR)
-               ret = CI_ERROR;
-     }
-     else if (uc->error_page && wbuf && wlen) {
-	 *wlen = ci_membuf_read(uc->error_page, wbuf, *wlen);
-	 if (*wlen == CI_ERROR)
-	      ret = CI_ERROR;
-
-	 if(*wlen == 0)
-	     *wlen = CI_EOF;
-
-	 /* 
-	    also we are leaving untouched the *rlen to drop all incomming data.
-	    The *rlen should modified to the bytes read from this function,
-	    leaving untouched  means that we are read all data
-	  */
+         else {
+             ci_debug_printf(9, "Does not allow early responses, wait for eof before send data\n");
+             *wlen = 0;
+         }
      }
 
      return ret;

@@ -21,7 +21,7 @@
 #include "debug.h"
 #include "url_check_body.h"
 
-int body_data_init(struct body_data *bd, enum body_type type,  int size)
+int body_data_init(struct body_data *bd, enum body_type type,  int size, ci_membuf_t *err_page)
 {
     if (!bd)
         return 0;
@@ -29,7 +29,15 @@ int body_data_init(struct body_data *bd, enum body_type type,  int size)
         bd->store.cached = ci_cached_file_new(size);
     }
     else if(type == RING ){
-        bd->store.ring = ci_ring_buf_new(16384);
+        bd->store.ring = ci_ring_buf_new(32768);
+    }
+    else if(type == ERROR_PAGE) {
+        if (err_page)
+            bd->store.error_page = err_page;
+        else  {
+            ci_debug_printf(1, "No Error Page passed for body data.");
+            return 0;
+        }
     }
     else {
         ci_debug_printf(1, "BUG in url_check, body_data_init: invalid body type:%d", type);
@@ -50,6 +58,10 @@ void body_data_destroy(struct body_data *body)
         ci_ring_buf_destroy(body->store.ring);
         body->store.ring = NULL;
     }
+    else if(body->type == ERROR_PAGE) {
+        ci_membuf_free(body->store.error_page);
+        body->store.error_page = NULL;
+    }
     else {
         ci_debug_printf(1, "BUG in url_check, body_data_destroy: invalid body type:%d\n", body->type);
     }
@@ -59,6 +71,9 @@ void body_data_destroy(struct body_data *body)
 
 int body_data_write(struct body_data *body, char *buf, int len, int iseof)
 {
+    if (iseof)
+        body->eof = 1;
+
     if (body->type == CACHED){
         if (buf && len)
             return ci_cached_file_write(body->store.cached, buf, len, iseof);
@@ -67,11 +82,20 @@ int body_data_write(struct body_data *body, char *buf, int len, int iseof)
         /*else ERROR*/
     }
     else if(body->type == RING ){
-        if (iseof)
-            body->eof = 1;
         if (len && buf)
             return ci_ring_buf_write(body->store.ring, buf, len);
         else if (iseof)
+            return CI_EOF;
+        /*else ERROR*/
+    }
+    else if(body->type == ERROR_PAGE) {
+        /*
+          The error pages are read-only so we do not want to write on them.
+          Just discard the data.
+         */
+        if (len && buf)
+            return  len;
+        else if(iseof)
             return CI_EOF;
         /*else ERROR*/
     }
@@ -94,6 +118,14 @@ int body_data_read(struct body_data *body, char *buf, int len)
         if(len == 0 && body->eof == 1)
             return CI_EOF;
         return len;
+    }
+    else if(body->type == ERROR_PAGE) {
+        len = ci_membuf_read(body->store.error_page, buf, len);
+        if (len == CI_ERROR)
+            return CI_ERROR;
+
+        if(len == 0)
+            return CI_EOF;
     }
     else {
         ci_debug_printf(1, "BUG in url_check, body_data_read: invalid body type:%d\n", body->type);

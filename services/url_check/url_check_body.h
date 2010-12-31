@@ -18,19 +18,20 @@
 
 #include "body.h"
 
-enum body_type {NO_BODY_TYPE=0, CACHED, RING};
+enum body_type {NO_BODY_TYPE=0, CACHED, RING, ERROR_PAGE};
 
 struct body_data {
     union {
         ci_cached_file_t *cached;
         ci_ring_buf_t *ring;
+        ci_membuf_t *error_page;
     } store;
     enum body_type type;
     int eof;
 };
 
-#define body_data_haseof(body) (body->type==RING?body->eof : ci_cached_file_haseof(body->store.cached))
-int body_data_init(struct body_data *bd, enum body_type type,  int size);
+#define body_data_haseof(body) (body->eof)
+int body_data_init(struct body_data *bd, enum body_type type,  int size, ci_membuf_t *err_page);
 void body_data_destroy(struct body_data *body);
 int body_data_write(struct body_data *body, char *buf, int len, int iseof);
 int body_data_read(struct body_data *body, char *buf, int len);
