@@ -70,7 +70,7 @@ char *srvclamav_compute_name(ci_request_t * req);
 /* Module definitions                                                              */
 
 static int SEND_PERCENT_BYTES = 0;      /* Can send all bytes that has received without checked */
-static int ALLOW204 = 0;
+static int ALLOW204 = 1;
 static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
 
