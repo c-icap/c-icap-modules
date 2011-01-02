@@ -28,9 +28,10 @@
 #include "ci_threads.h"
 #include "mem.h"
 #include "commands.h"
-#include "../../common.h"
 #include "txt_format.h"
 #include "txtTemplate.h"
+#include "stats.h"
+#include "../../common.h"
 #include <errno.h>
 
 
@@ -63,6 +64,12 @@ static int *scangroups = NULL;
 char *VIR_SAVE_DIR = NULL;
 char *VIR_HTTP_SERVER = NULL;
 int VIR_UPDATE_TIME = 15;
+
+/*Statistic  Ids*/
+int AV_SCAN_REQS = -1;
+int AV_VIRMODE_REQS = -1;
+int AV_SCAN_BYTES = -1;
+int AV_VIRUSES_FOUND = -1;
 
 /*********************/
 /* Formating table   */
@@ -200,6 +207,13 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
 	 ci_debug_printf(1, " srvclamav_init_service: error registering object_pool av_req_data_t\n");
 	 return 0;
      }
+
+     /*initialize statistic counters*/
+     AV_SCAN_REQS = ci_stat_entry_register("Requests scanned", STAT_INT64_T,  "Service srv_clamav");
+     AV_VIRMODE_REQS = ci_stat_entry_register("Virmode requests", STAT_INT64_T,  "Service srv_clamav");
+     AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T,  "Service srv_clamav");
+     AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T,  "Service srv_clamav");
+
      /*initialize service commands */
      register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                       dbreload_command);
@@ -332,6 +346,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 #ifdef VIRALATOR_MODE
      if (data->must_scanned == VIR_SCAN) {
           init_vir_mode_data(req, data);
+          ci_stat_uint64_inc(AV_VIRMODE_REQS, 1);
      }
      else {
 #endif
@@ -479,16 +494,18 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 
 
      ci_debug_printf(6, "Scan from file\n");
+     
      lseek(body->fd, 0, SEEK_SET);
-
      data->virus_name = clamav_scan(body->fd, &scanned_data);
-
+     ci_stat_uint64_inc(AV_SCAN_REQS, 1);
+     ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
      ci_debug_printf(6,
                      "Clamav engine scanned %lu blocks of  data. Data size: %"
                      PRINTF_OFF_T "...\n", 
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (data->virus_name) { /*A virus found*/
+         ci_stat_uint64_inc(AV_VIRUSES_FOUND, 1);
 	  http_client_ip = ci_headers_value(req->request_header, "X-Client-IP");
           ci_debug_printf(1, "VIRUS DETECTED: %s , http client ip: %s, http user: %s, http url: %s \n ",
                           data->virus_name,
