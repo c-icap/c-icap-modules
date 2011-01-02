@@ -1,6 +1,9 @@
 #ifndef __SRV_CLAMAV_H
 #define __SRV_CLAMAV_H
 
+#include "body.h"
+#include "request.h"
+
 #define VIRALATOR_MODE
 
 #define LOG_URL_SIZE 256
@@ -37,5 +40,14 @@ void init_vir_mode_data(ci_request_t *req,av_req_data_t *data);
 int send_vir_mode_page(av_req_data_t *data,char *buf,int len,ci_request_t *req);
 void endof_data_vir_mode(av_req_data_t *data,ci_request_t *req);
 #endif
+
+/*Clamav support functions*/
+int clamav_init();
+char *clamav_scan(int fd, unsigned long *scanned_data);
+void clamav_get_versions(unsigned int *level, unsigned int *version, char *str, size_t len);
+int clamav_init_virusdb();
+int clamav_reload_virusdb();
+void clamav_destroy_virusdb();
+
 
 #endif
