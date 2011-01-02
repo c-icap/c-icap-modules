@@ -272,6 +272,9 @@ void *srvclamav_init_request_data(ci_request_t * req)
           data->vir_mode_state = VIR_ZERO;
           data->expected_size = 0;
 #endif
+          data->max_object_size = MAX_OBJECT_SIZE;
+          data->send_percent_bytes = SEND_PERCENT_BYTES;
+          data->start_send_after = START_SEND_AFTER;
           return data;
      }
      return NULL;
@@ -332,9 +335,9 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      }
      else {
 #endif
-          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : MAX_OBJECT_SIZE);
+          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : data->max_object_size);
 
-          if (SEND_PERCENT_BYTES >= 0 && START_SEND_AFTER == 0) {
+          if (data->send_percent_bytes >= 0 && data->start_send_after == 0) {
                ci_req_unlock_data(req); /*Icap server can send data before all body has received */
                /*Let ci_simple_file api to control the percentage of data.For the beggining no data can send.. */
                ci_simple_file_lock_all(data->body);
@@ -378,7 +381,7 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
      }
 
      if (data->args.sizelimit
-         && ci_simple_file_size(data->body) >= MAX_OBJECT_SIZE) {
+         && ci_simple_file_size(data->body) >= data->max_object_size) {
          ci_debug_printf(5, "Object bigger than max scanable file. \n");
           data->must_scanned = 0;
 
@@ -392,13 +395,13 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
               ci_simple_file_unlock_all(data->body);        /*Unlock all body data to continue send them..... */
           }
 
-     }                          /*else Allow transfer SEND_PERCENT_BYTES of the data */
+     }                          /*else Allow transfer data->send_percent_bytes of the data */
      else if (data->args.mode != 1 &&   /*not in the simple mode */
-              SEND_PERCENT_BYTES
-              && START_SEND_AFTER < ci_simple_file_size(data->body)) {
+              data->send_percent_bytes
+              && data->start_send_after < ci_simple_file_size(data->body)) {
           ci_req_unlock_data(req);
           allow_transfer =
-              (SEND_PERCENT_BYTES * (data->body->endpos + len)) / 100;
+              (data->send_percent_bytes * (data->body->endpos + len)) / 100;
           ci_simple_file_unlock(data->body, allow_transfer);
      }
      return ci_simple_file_write(data->body, buf, len, iseof);
@@ -632,14 +635,14 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
  	  type = SCAN;
      }
      
-     if (type == SCAN && data->args.sizelimit && MAX_OBJECT_SIZE &&
-         data->expected_size > MAX_OBJECT_SIZE) {
+     if (type == SCAN && data->args.sizelimit && data->max_object_size &&
+         data->expected_size > data->max_object_size) {
          ci_debug_printf(1,
                          "Object size is %" PRINTF_OFF_T " ."
                          " Bigger than max scannable file size (%"
                          PRINTF_OFF_T "). Allow it.... \n", 
                          (CAST_OFF_T) data->expected_size,
-                         (CAST_OFF_T) MAX_OBJECT_SIZE);
+                         (CAST_OFF_T) data->max_object_size);
          type = NO_SCAN;
      }
      

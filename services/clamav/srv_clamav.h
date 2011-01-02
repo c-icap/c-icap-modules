@@ -28,6 +28,9 @@ typedef struct av_req_data{
 	  int sizelimit;
 	  int mode;
      } args;
+     ci_off_t max_object_size;
+     int send_percent_bytes;
+     ci_off_t start_send_after;
 }av_req_data_t;
 
 enum {NO_SCAN=0,SCAN,VIR_SCAN};
