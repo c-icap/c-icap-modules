@@ -13,7 +13,9 @@ srv_clamav_la_SOURCES = srv_clamav.c srv_clamav_vir.c clamav_support.c
 TMPLS = templates/en/VIR_MODE_HEAD templates/en/VIR_MODE_PROGRESS templates/en/VIR_MODE_TAIL templates/en/VIR_MODE_VIRUS_FOUND templates/en/VIRUS_FOUND
 
 install-data-local:
-	$(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf
-	$(INSTALL) $(TMPLS) $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/
+	$(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf.default
+	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; Then $(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; fi
+	$(mkinstalldirs) $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/
+	for f in $(TMPLS); do $(INSTALL) $f $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/; done
 
 EXTRA_DIST = srv_clamav.h srv_clamav.conf $(TMPLS)
