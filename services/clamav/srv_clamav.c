@@ -192,7 +192,7 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      ci_debug_printf(10, "Going to initialize srvclamav\n");
      ret = clamav_init_virusdb();
      if (!ret)
-          return 0;
+          return CI_ERROR;
      srv_clamav_xdata = srv_xdata;      /*Needed by db_reload command */
      set_istag(srv_clamav_xdata);
      ci_service_set_preview(srv_xdata, 1024);
@@ -205,7 +205,7 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
 
      if(AVREQDATA_POOL < 0) {
 	 ci_debug_printf(1, " srvclamav_init_service: error registering object_pool av_req_data_t\n");
-	 return 0;
+	 return CI_ERROR;
      }
 
      /*initialize statistic counters*/
@@ -218,13 +218,16 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                       dbreload_command);
 
-     return 1;
+     return CI_OK;
 }
 
 int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
-    return clamav_init();
+    if (!clamav_init())
+        return CI_ERROR;
+
+    return CI_OK;
 }
 
 void srvclamav_close_service()
@@ -254,7 +257,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
                           preview_size);
           if (!(data = ci_object_pool_alloc(AVREQDATA_POOL))) {
                ci_debug_printf(1,
-                               "Error allocation memory for service data!!!!!!!");
+                               "Error allocation memory for service data!!!!!!!\n");
                return NULL;
           }
           data->body = NULL;
