@@ -17,7 +17,8 @@ if USEBDB
 endif
 
 install-data-local:
-	$(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf
+	$(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf.default
+	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; then $(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; fi
 
 
 EXTRA_DIST= sguardDB.h makefile.w32 srv_url_check.def srv_url_check.conf
