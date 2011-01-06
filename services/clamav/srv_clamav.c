@@ -1047,7 +1047,7 @@ int cfg_SendPercentBytes(char *directive, char **argv, void *setdata)
 
      SEND_PERCENT_BYTES = val;
      ci_debug_printf(2, "Setting parameter :%s=%d\n", directive, val);
-     return val;
+     return 1;
 }
 
 
