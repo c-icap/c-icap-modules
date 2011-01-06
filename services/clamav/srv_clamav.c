@@ -33,6 +33,7 @@
 #include "stats.h"
 #include "../../common.h"
 #include <errno.h>
+#include <assert.h>
 
 
 int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len);
@@ -49,7 +50,7 @@ char *srvclamav_compute_name(ci_request_t * req);
 /***********************************************************************************/
 /* Module definitions                                                              */
 
-static int SEND_PERCENT_BYTES = 0;      /* Can send all bytes that has received without checked */
+static int SEND_PERCENT_BYTES = 0;      /* By default will not send any bytes without check them before */
 static int ALLOW204 = 1;
 static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
@@ -354,12 +355,10 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      else {
 #endif
           data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : data->max_object_size);
-
-          if (data->send_percent_bytes >= 0 && data->start_send_after == 0) {
-               ci_req_unlock_data(req); /*Icap server can send data before all body has received */
-               /*Let ci_simple_file api to control the percentage of data.For the beggining no data can send.. */
-               ci_simple_file_lock_all(data->body);
-          }
+          ci_req_unlock_data(req); /*Icap server can send data before all body has received */
+          /* Let ci_simple_file api to control the percentage of data.
+             For now no data can send */
+          ci_simple_file_lock_all(data->body);
 #ifdef VIRALATOR_MODE
      }
 #endif
@@ -415,9 +414,11 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 
      }                          /*else Allow transfer data->send_percent_bytes of the data */
      else if (data->args.mode != 1 &&   /*not in the simple mode */
-              data->send_percent_bytes
-              && data->start_send_after < ci_simple_file_size(data->body)) {
+              data->start_send_after < ci_simple_file_size(data->body)) {
           ci_req_unlock_data(req);
+#if 1
+          assert(data->send_percent_bytes >= 0 && data->send_percent_bytes <= 100);
+#endif
           allow_transfer =
               (data->send_percent_bytes * (data->body->endpos + len)) / 100;
           ci_simple_file_unlock(data->body, allow_transfer);
