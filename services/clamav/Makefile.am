@@ -14,8 +14,8 @@ TMPLS = templates/en/VIR_MODE_HEAD templates/en/VIR_MODE_PROGRESS templates/en/V
 
 install-data-local:
 	$(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf.default
-	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; Then $(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; fi
+	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; then $(INSTALL) srv_clamav.conf $(DESTDIR)$(CONFIGDIR)/srv_clamav.conf; fi
 	$(mkinstalldirs) $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/
-	for f in $(TMPLS); do $(INSTALL) $f $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/; done
+	for f in $(TMPLS); do $(INSTALL) $$f $(DESTDIR)$(cicapdatadir)/templates/srv_clamav/en/; done
 
 EXTRA_DIST = srv_clamav.h srv_clamav.conf $(TMPLS)
