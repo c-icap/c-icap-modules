@@ -354,7 +354,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 #endif
           data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : MAX_OBJECT_SIZE);
 
-          if (SEND_PERCENT_BYTES >= 0 && START_SEND_AFTER == 0) {
+          if (SEND_PERCENT_BYTES >= 0) {
                ci_req_unlock_data(req); /*Icap server can send data before all body has received */
                /*Let ci_simple_file api to control the percentage of data.For the beggining no data can send.. */
                ci_simple_file_lock_all(data->body);
@@ -404,7 +404,7 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
           ci_simple_file_unlock_all(data->body);        /*Unlock all body data to continue send them..... */
      }                          /*else Allow transfer SEND_PERCENT_BYTES of the data */
      else if (data->args.mode != 1 &&   /*not in the simple mode */
-              SEND_PERCENT_BYTES
+              SEND_PERCENT_BYTES >= 0
               && START_SEND_AFTER < ci_simple_file_size(data->body)) {
           ci_req_unlock_data(req);
           allow_transfer =
