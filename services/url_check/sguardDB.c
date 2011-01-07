@@ -1,12 +1,7 @@
-#include <time.h>
-#include <string.h>
-#include <unistd.h>
-#include <stdio.h>
-#include <fcntl.h>
 #include "sguardDB.h"
 #include "mem.h"
 #include "debug.h"
-
+#include "../../common.h"
 /*
 DB_ENV *envDB;
 DB *DomainsDB = NULL;
@@ -73,11 +68,7 @@ int domainComparePartial (DB *dbp, const DBT *a, const DBT *b)
     return ac1 - bc1;
 }
 
-
-
-
-
-DB_ENV *db_setup(char *home)
+DB_ENV *db_setup(const char *home)
 {
     DB_ENV *dbenv;
     int ret;
@@ -168,10 +159,11 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 
 int SGDB_T_POOL = -1;
 
-sg_db_t *sg_init_db(char *home)
+sg_db_t *sg_init_db(const char *name, const char *home)
 {
     sg_db_t *sg_db;
-    
+    char buf[256];
+
     if(SGDB_T_POOL < 0 )
 	SGDB_T_POOL = ci_object_pool_register("sg_db_t", sizeof(sg_db_t));
 
@@ -201,6 +193,13 @@ sg_db_t *sg_init_db(char *home)
 	return NULL;
     }
 
+    snprintf(buf, 256, "%s/domains", (name?name:""));
+    buf[255] = '\0';
+    sg_db->domains_db_name = strdup(buf);
+    snprintf(buf, 256, "%s/urls", (name?name:""));
+    buf[255] = '\0';
+    sg_db->urls_db_name = strdup(buf);
+
     ci_debug_printf(5,"DBs opened\n");
     ci_debug_printf(5,"Finished initialisation\n");
     return sg_db;
@@ -223,6 +222,12 @@ void sg_close_db(sg_db_t *sg_db)
 	sg_db->env_db->close(sg_db->env_db, 0);
 	sg_db->env_db=NULL;
     }
+
+    if (sg_db->domains_db_name)
+        free(sg_db->domains_db_name);
+    if (sg_db->urls_db_name)
+        free(sg_db->urls_db_name);
+
     ci_object_pool_free(sg_db);
 }
 
