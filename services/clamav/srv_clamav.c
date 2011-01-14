@@ -35,7 +35,6 @@
 #include <errno.h>
 #include <assert.h>
 
-
 int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len);
 
 long int CLAMAV_MAXRECLEVEL = 5;
@@ -50,14 +49,13 @@ char *srvclamav_compute_name(ci_request_t * req);
 /***********************************************************************************/
 /* Module definitions                                                              */
 
-static int SEND_PERCENT_BYTES = 0;      /* By default will not send any bytes without check them before */
+static int SEND_PERCENT_DATA = 0;      /* By default will not send any bytes without check them before */
 static int ALLOW204 = 1;
 static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
 
 static struct ci_magics_db *magic_db = NULL;
-static int *scantypes = NULL;
-static int *scangroups = NULL;
+static struct av_file_types SCAN_FILE_TYPES = {NULL, NULL};
 
 /*char *VIR_SAVE_DIR="/srv/www/htdocs/downloads/";
   char *VIR_HTTP_SERVER="http://fortune/cgi-bin/get_file.pl?usename=%f&file="; */
@@ -67,21 +65,22 @@ char *VIR_HTTP_SERVER = NULL;
 int VIR_UPDATE_TIME = 15;
 
 /*Statistic  Ids*/
-int AV_SCAN_REQS = -1;
-int AV_VIRMODE_REQS = -1;
-int AV_SCAN_BYTES = -1;
-int AV_VIRUSES_FOUND = -1;
+static int AV_SCAN_REQS = -1;
+static int AV_VIRMODE_REQS = -1;
+static int AV_SCAN_BYTES = -1;
+static int AV_VIRUSES_FOUND = -1;
 
 /*********************/
 /* Formating table   */
-int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, char *param);
+static int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, char *param);
+static int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, char *param);
+static int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, char *param);
 #ifdef VIRALATOR_MODE
 int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, char *param);
 int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, char *param);
 int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, char *param);
 int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, char *param);
+int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, char *param);
 #endif
 struct ci_fmt_entry srv_clamav_format_table [] = {
     {"%VVN", "Virus name", fmt_srv_clamav_virusname},
@@ -92,40 +91,41 @@ struct ci_fmt_entry srv_clamav_format_table [] = {
     {"%VFS", "Expected http body data size (Content-Length header)", fmt_srv_clamav_expect_size},
     {"%VF", "local filename", fmt_srv_clamav_filename},
     {"%VHS", "HTTP URL", fmt_srv_clamav_httpurl},
+    {"%VPR", "Profile name", fmt_srv_clamav_profile},
 #endif
     { NULL, NULL, NULL}
 };
 
 
 /*srv_clamav service extra data ... */
-ci_service_xdata_t *srv_clamav_xdata = NULL;
+static ci_service_xdata_t *srv_clamav_xdata = NULL;
 
-int AVREQDATA_POOL = -1;
+static int AVREQDATA_POOL = -1;
 
-int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
+static int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
-int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
+static int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
-void srvclamav_close_service();
-int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
+static void srvclamav_close_service();
+static int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t *);
-int srvclamav_end_of_data_handler(ci_request_t *);
-void *srvclamav_init_request_data(ci_request_t * req);
-void srvclamav_release_request_data(void *data);
-int srvclamav_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
+static int srvclamav_end_of_data_handler(ci_request_t *);
+static void *srvclamav_init_request_data(ci_request_t * req);
+static void srvclamav_release_request_data(void *data);
+static int srvclamav_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ci_request_t * req);
 
 /*Arguments parse*/
-void srvclamav_parse_args(av_req_data_t * data, char *args);
+static void srvclamav_parse_args(av_req_data_t * data, char *args);
 /*Configuration Functions*/
 int cfg_ScanFileTypes(char *directive, char **argv, void *setdata);
-int cfg_SendPercentBytes(char *directive, char **argv, void *setdata);
-int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata);
+int cfg_SendPercentData(char *directive, char **argv, void *setdata);
+static int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata);
 /*Commands functions*/
-void dbreload_command(char *name, int type, char **argv);
+static void dbreload_command(char *name, int type, char **argv);
 /*General functions*/
-int get_filetype(ci_request_t * req);
-void set_istag(ci_service_xdata_t * srv_xdata);
+static int get_filetype(ci_request_t * req);
+static void set_istag(ci_service_xdata_t * srv_xdata);
 
 /*It is dangerous to pass directly fields of the limits structure in conf_variables,
   becouse in the feature some of this fields will change type (from int to unsigned int 
@@ -137,9 +137,10 @@ void set_istag(ci_service_xdata_t * srv_xdata);
 
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
-     {"SendPercentData", NULL, cfg_SendPercentBytes, NULL},
-     {"ScanFileTypes", NULL, cfg_ScanFileTypes, NULL},
+     {"SendPercentData",  &SEND_PERCENT_DATA, cfg_SendPercentData, NULL},
+     {"ScanFileTypes", &SCAN_FILE_TYPES, cfg_ScanFileTypes, NULL},
      {"MaxObjectSize", &MAX_OBJECT_SIZE, ci_cfg_size_off, NULL},
+     {"StartSendingDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"StartSendPercentDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
      {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
@@ -152,7 +153,7 @@ static struct ci_conf_entry conf_variables[] = {
      {"VirSaveDir", &VIR_SAVE_DIR, ci_cfg_set_str, NULL},
      {"VirHTTPUrl", &VIR_HTTP_SERVER, ci_cfg_set_str, NULL},
      {"VirUpdateTime", &VIR_UPDATE_TIME, ci_cfg_set_int, NULL},
-     {"VirScanFileTypes", NULL, cfg_ScanFileTypes, NULL},
+     {"VirScanFileTypes", &SCAN_FILE_TYPES, cfg_ScanFileTypes, NULL},
 #endif
      {NULL, NULL, NULL, NULL}
 };
@@ -179,16 +180,9 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
-     int ret, i;
+     int ret;
      magic_db = server_conf->MAGIC_DB;
-     scantypes = (int *) malloc(ci_magic_types_num(magic_db) * sizeof(int));
-     scangroups = (int *) malloc(ci_magic_groups_num(magic_db) * sizeof(int));
-
-     for (i = 0; i < ci_magic_types_num(magic_db); i++)
-          scantypes[i] = 0;
-     for (i = 0; i < ci_magic_groups_num(magic_db); i++)
-          scangroups[i] = 0;
-
+     av_file_types_init(&SCAN_FILE_TYPES);
 
      ci_debug_printf(10, "Going to initialize srvclamav\n");
      ret = clamav_init_virusdb();
@@ -228,19 +222,19 @@ int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
     if (!clamav_init())
         return CI_ERROR;
 
+    av_req_profile_init_profiles();
     return CI_OK;
 }
 
 void srvclamav_close_service()
 {
-     free(scantypes);
-     scantypes = NULL;
-     free(scangroups);
-     scangroups = NULL;
+     av_file_types_destroy(&SCAN_FILE_TYPES);
      ci_object_pool_unregister(AVREQDATA_POOL);
      clamav_destroy_virusdb();
      if (CLAMAV_TMP)
          free(CLAMAV_TMP);
+
+     av_req_profile_release_profiles();
 }
 
 void *srvclamav_init_request_data(ci_request_t * req)
@@ -283,6 +277,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
           else
                data->allow204 = 0;
           data->req = req;
+          data->profile = NULL;
 
 #ifdef VIRALATOR_MODE
           data->last_update = 0;
@@ -290,9 +285,6 @@ void *srvclamav_init_request_data(ci_request_t * req)
           data->vir_mode_state = VIR_ZERO;
           data->expected_size = 0;
 #endif
-          data->max_object_size = MAX_OBJECT_SIZE;
-          data->send_percent_bytes = SEND_PERCENT_BYTES;
-          data->start_send_after = START_SEND_AFTER;
           return data;
      }
      return NULL;
@@ -327,7 +319,9 @@ void srvclamav_release_request_data(void *data)
 int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t * req)
 {
+     char buf[256];
      ci_off_t content_size = 0;
+     struct av_req_profile *prof = NULL;
      av_req_data_t *data = ci_service_data(req);
 
      ci_debug_printf(6, "OK; the preview data size is %d\n", preview_data_len);
@@ -336,6 +330,28 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 	 ci_debug_printf(6, "No body data, allow 204\n");
           return CI_MOD_ALLOW204;
      }
+
+     /*Select correct if any profile*/
+     prof = av_req_profile_select(req);
+     if (prof) {
+         data->profile = prof;
+         if (prof->max_object_size && MAX_OBJECT_SIZE > prof->max_object_size)
+             data->max_object_size = prof->max_object_size;
+         else
+             data->max_object_size = MAX_OBJECT_SIZE;
+         
+         data->send_percent_bytes = prof->send_percent_data >= 0 ? prof->send_percent_data : SEND_PERCENT_DATA;
+         data->start_send_after = prof->start_send_after >= 0 ? prof->start_send_after : START_SEND_AFTER;
+         snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", prof->name);
+         buf[sizeof(buf)-1] = '\0';
+         ci_icap_add_xheader(req, buf);
+     }
+     else {
+         data->max_object_size = MAX_OBJECT_SIZE;
+         data->send_percent_bytes = SEND_PERCENT_DATA;
+         data->start_send_after = START_SEND_AFTER;
+     }
+     
 
      /*Compute the expected size, will be used by must_scanned*/
      content_size = ci_http_content_length(req);
@@ -616,6 +632,10 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 
      /*By default do not scan*/
      type = NO_SCAN;
+
+     if (data->profile && data->profile->disable_scan)
+         return NO_SCAN;
+
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
      file_type = get_filetype(req);
      
@@ -635,14 +655,14 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
          i = 0;
          if (file_groups) {
              while (file_groups[i] >= 0 && i < MAX_GROUPS) {
-                 if ((type = scangroups[file_groups[i]]) > 0)
+                 if ((type = SCAN_FILE_TYPES.scangroups[file_groups[i]]) > 0)
                      break;
                  i++;
              }
          }
 
          if (type == NO_SCAN)
-             type = scantypes[file_type];
+             type = SCAN_FILE_TYPES.scantypes[file_type];
      }
 
      if (type == NO_SCAN && data->args.forcescan)
@@ -696,6 +716,29 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
      data->error_page = error_page;
 }
 
+int av_file_types_init( struct av_file_types *ftypes)
+{
+    int i;
+    ftypes->scantypes = (int *) malloc(ci_magic_types_num(magic_db) * sizeof(int));
+    ftypes->scangroups = (int *) malloc(ci_magic_groups_num(magic_db) * sizeof(int));
+
+    if (!ftypes->scantypes || !ftypes->scangroups)
+        return 0;
+
+    for (i = 0; i < ci_magic_types_num(magic_db); i++)
+        ftypes->scantypes[i] = 0;
+    for (i = 0; i < ci_magic_groups_num(magic_db); i++)
+        ftypes->scangroups[i] = 0;
+    return 1;
+}
+
+void av_file_types_destroy( struct av_file_types *ftypes)
+{
+    free(ftypes->scantypes);
+    ftypes->scantypes = NULL;
+    free(ftypes->scangroups);
+    ftypes->scangroups = NULL;
+}
 /***************************************************************************************/
 /* Parse arguments function - 
    Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed          
@@ -745,6 +788,10 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 {
      int i, id;
      int type = NO_SCAN;
+     struct av_file_types *ftypes = (struct av_file_types *)setdata;
+     if (!ftypes)
+         return 0;
+
      if (strcmp(directive, "ScanFileTypes") == 0)
           type = SCAN;
      else if (strcmp(directive, "VirScanFileTypes") == 0)
@@ -754,9 +801,9 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 
      for (i = 0; argv[i] != NULL; i++) {
           if ((id = ci_get_data_type_id(magic_db, argv[i])) >= 0)
-               scantypes[id] = type;
+               ftypes->scantypes[id] = type;
           else if ((id = ci_get_data_group_id(magic_db, argv[i])) >= 0)
-               scangroups[id] = type;
+               ftypes->scangroups[id] = type;
           else
                ci_debug_printf(1, "Unknown data type %s \n", argv[i]);
 
@@ -765,11 +812,11 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
      ci_debug_printf(2, "I am going to scan data for %s scanning of type:",
                      (type == 1 ? "simple" : "vir_mode"));
      for (i = 0; i < ci_magic_types_num(magic_db); i++) {
-          if (scantypes[i] == type)
+          if (ftypes->scantypes[i] == type)
                ci_debug_printf(2, ",%s", ci_data_type_name(magic_db, i));
      }
      for (i = 0; i < ci_magic_groups_num(magic_db); i++) {
-          if (scangroups[i] == type)
+          if (ftypes->scangroups[i] == type)
                ci_debug_printf(2, ",%s", ci_data_group_name(magic_db, i));
      }
      ci_debug_printf(1, "\n");
@@ -777,7 +824,7 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 }
 
 
-int cfg_SendPercentBytes(char *directive, char **argv, void *setdata)
+int cfg_SendPercentData(char *directive, char **argv, void *setdata)
 {
      int val = 0;
      char *end;
@@ -792,7 +839,7 @@ int cfg_SendPercentBytes(char *directive, char **argv, void *setdata)
           return 0;
      }
 
-     SEND_PERCENT_BYTES = val;
+     *((int *) setdata) = val;
      ci_debug_printf(2, "Setting parameter :%s=%d\n", directive, val);
      return 1;
 }
@@ -843,4 +890,13 @@ int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     return snprintf(buf, len, "%s", data->url_log);
+}
+
+int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, char *param)
+{
+    av_req_data_t *data = ci_service_data(req);
+    if (data->profile)
+        return snprintf(buf, len, "%s", data->profile->name);
+
+    return snprintf(buf, len, "-");
 }

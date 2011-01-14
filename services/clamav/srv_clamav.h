@@ -3,10 +3,14 @@
 
 #include "body.h"
 #include "request.h"
+#include "acl.h"
 
 #define VIRALATOR_MODE
 
 #define LOG_URL_SIZE 256
+struct av_file_types;
+struct av_req_profile;
+
 typedef struct av_req_data{
      ci_simple_file_t *body;
      ci_request_t *req;
@@ -16,6 +20,7 @@ typedef struct av_req_data{
      char *virus_name;
      ci_membuf_t *error_page;
      char url_log[LOG_URL_SIZE];
+    const struct av_req_profile *profile;
 #ifdef VIRALATOR_MODE
      time_t last_update;
      char *requested_filename;
@@ -33,6 +38,22 @@ typedef struct av_req_data{
      ci_off_t start_send_after;
 }av_req_data_t;
 
+struct av_file_types {
+    int *scantypes;
+    int *scangroups;
+};
+
+struct av_req_profile {
+    char *name;
+    int disable_scan;
+    int send_percent_data;
+    ci_off_t start_send_after; 
+    ci_off_t max_object_size;
+    struct av_file_types scan_file_types;
+    ci_access_entry_t *access_list;
+    struct av_req_profile *next;
+};
+
 enum {NO_SCAN=0,SCAN,VIR_SCAN};
 
 #ifdef VIRALATOR_MODE
@@ -43,6 +64,15 @@ void init_vir_mode_data(ci_request_t *req,av_req_data_t *data);
 int send_vir_mode_page(av_req_data_t *data,char *buf,int len,ci_request_t *req);
 void endof_data_vir_mode(av_req_data_t *data,ci_request_t *req);
 #endif
+
+/*File types related functions*/
+int av_file_types_init( struct av_file_types *ftypes);
+void av_file_types_destroy( struct av_file_types *ftypes);
+
+/*profiles related functions */
+void av_req_profile_init_profiles();
+void av_req_profile_release_profiles();
+struct av_req_profile *av_req_profile_select(ci_request_t *req);
 
 /*Clamav support functions*/
 int clamav_init();
