@@ -284,7 +284,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      str = ci_headers_value(req_header, "Host");
      if (str) {
           strncpy(httpinf->host, str, CI_MAXHOSTNAMELEN);
-          httpinf->site[CI_MAXHOSTNAMELEN] = '\0';
+          httpinf->host[CI_MAXHOSTNAMELEN] = '\0';
      }
 
      /*
