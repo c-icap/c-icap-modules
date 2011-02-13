@@ -126,6 +126,7 @@ int body_data_read(struct body_data *body, char *buf, int len)
 
         if(len == 0)
             return CI_EOF;
+        return len;
     }
     else {
         ci_debug_printf(1, "BUG in url_check, body_data_read: invalid body type:%d\n", body->type);
