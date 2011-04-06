@@ -334,7 +334,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 
 int profile_access(struct profile *prof, struct http_info *info);
 
-static char *error_message = "<H1>Permition deny!<H1>";
+static char *error_message = "<H1>Access denied!<H1>";
 
 int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t * req)
