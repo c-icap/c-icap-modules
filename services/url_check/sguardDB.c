@@ -46,28 +46,6 @@ int domainCompare (DB *dbp, const DBT *a, const DBT *b)
     return ac1 - bc1;
 }
 
-int domainComparePartial (DB *dbp, const DBT *a, const DBT *b)
-{
-    const char *a1 , *b1;
-    char ac1 , bc1;
-    a1=(char *) a->data + a->size - 1;
-    b1=(char *) b->data + b->size - 1;
-    while (*a1 == *b1){
-	if(b1 == b->data || a1 == a->data)
-	    break;
-	a1--; b1--;
-    }
-    ac1 = *a1 == '.' ? '\1' : *a1;
-    bc1 = *b1 == '.' ? '\1' : *b1;
-    if((a1 == a->data || b1 == b->data) && *a1 == '.' && *b1 == '.')
-	return ac1 - bc1;
-    if(a1 == a->data)
-	return -1;
-    if(b1 == b->data)
-	return 1;
-    return ac1 - bc1;
-}
-
 DB_ENV *db_setup(const char *home)
 {
     DB_ENV *dbenv;
@@ -239,15 +217,16 @@ int compdomainkey(char *dkey,char *domain,int dkey_len)
     if(domain_len<dkey_len-1)
 	return 1;
 
-    k_end=dkey+dkey_len-1;
-    d_end=domain+domain_len-1;
+    k_end=dkey+dkey_len;
+    d_end=domain+domain_len;
 
-    while(d_end>domain && k_end>dkey) {
-	if(*d_end!=*k_end)
-            return d_end-k_end;
+    do {
 	d_end--;
 	k_end--;
-    }
+	if(*d_end!=*k_end)
+            return d_end-k_end;
+    } while(d_end>domain && k_end>dkey);
+
     if(*k_end=='.' && *d_end=='.')
         return 0;
     if(d_end==domain && *(--k_end)=='.')
@@ -286,9 +265,10 @@ static int db_entry_exists(DB *dDB, char *entry,int (*cmpkey)(char *,char *,int 
 	    if ((ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_PREV)) == 0){/*Also check previous key*/
 		if((*cmpkey)((char*)key.data,entry,key.size)==0)
 		    found = 1;
-	
 	    }
     }
+    if (found)
+        ci_debug_printf(5, "db_entry_exists: Matching key: %s\n", (char *) key.data);
     L_dDBC->c_close(L_dDBC);
     return found;
 }
