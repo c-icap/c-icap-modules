@@ -234,15 +234,16 @@ int compdomainkey(char *dkey,char *domain,int dkey_len)
     if(domain_len<dkey_len-1)
 	return 1;
 
-    k_end=dkey+dkey_len-1;
-    d_end=domain+domain_len-1;
+    k_end=dkey+dkey_len;
+    d_end=domain+domain_len;
 
-    while(d_end>domain && k_end>dkey) {
-	if(*d_end!=*k_end)
-            return d_end-k_end;
+    do {
 	d_end--;
 	k_end--;
-    }
+	if(*d_end!=*k_end)
+            return d_end-k_end;
+    } while(d_end>domain && k_end>dkey);
+
     if(*k_end=='.' && *d_end=='.')
         return 0;
     if(d_end==domain && *(--k_end)=='.')
@@ -280,10 +281,11 @@ static int db_entry_exists(DB *dDB, char *entry,int (*cmpkey)(char *,char *,int 
 	else
 	    if ((ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_PREV)) == 0){/*Also check previous key*/
 		if((*cmpkey)((char*)key.data,entry,key.size)==0)
-		    found = 1;
-	
+		    found = 1;	
 	    }
     }
+    if (found)
+        ci_debug_printf(5, "db_entry_exists: Matching key: %s\n", (char *) key.data);
     L_dDBC->c_close(L_dDBC);
     return found;
 }
