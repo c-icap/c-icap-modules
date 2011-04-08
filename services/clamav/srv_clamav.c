@@ -355,8 +355,10 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
           data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : MAX_OBJECT_SIZE);
 
           if (SEND_PERCENT_BYTES >= 0) {
-               ci_req_unlock_data(req); /*Icap server can send data before all body has received */
-               /*Let ci_simple_file api to control the percentage of data.For the beggining no data can send.. */
+               /*Icap server can not send data at the begining.
+                 The following call does not needed because the c-icap
+                 does not send any data if the ci_req_unlock_data is not called:*/
+               /* ci_req_lock_data(req); */ 
                ci_simple_file_lock_all(data->body);
           }
 #ifdef VIRALATOR_MODE
@@ -483,6 +485,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      body = data->body;
      data->virus_check_done = 1;
      if (data->must_scanned == NO_SCAN) {       /*If exceeds the MAX_OBJECT_SIZE for example ......  */
+          ci_req_unlock_data(req);
           ci_simple_file_unlock_all(body);      /*Unlock all data to continue send them . Not really needed here.... */
           return CI_MOD_DONE;
      }
@@ -541,7 +544,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
           ci_debug_printf(7, "srvClamAv module: Respond with allow 204\n");
           return CI_MOD_ALLOW204;
      }
-
+     ci_req_unlock_data(req);
      ci_simple_file_unlock_all(body);   /*Unlock all data to continue send them..... */
      ci_debug_printf(7,
                      "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
