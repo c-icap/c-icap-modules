@@ -9,7 +9,7 @@
 #include "debug.h"
 #include "../../common.h"
 
-static struct av_req_profile *PROFILES;
+static struct av_req_profile *PROFILES = NULL;
 
 void av_req_profile_init_profiles() {
     PROFILES = NULL;
@@ -35,6 +35,7 @@ static struct av_req_profile *av_req_profile_create(char *name) {
     aprof->send_percent_data = -1;
     aprof->start_send_after = -1;
     aprof ->max_object_size = 0;
+    aprof->access_list = NULL;
     av_file_types_init(&aprof->scan_file_types);
     aprof->next = NULL;
     return aprof;
@@ -64,23 +65,32 @@ struct av_req_profile *av_req_profile_get(char *name) {
         return aprof;
 
     aprof = av_req_profile_create(name);
+    if (!aprof) {
+        ci_debug_printf(1, "Error creating av_req profile %s!\n", name);
+        return NULL;
+    }
     aprof->next = PROFILES;
-    return (PROFILES = aprof);
+    PROFILES = aprof;
+    return aprof;
 }
 
 struct av_req_profile *av_req_profile_select(ci_request_t *req)
 {
     struct av_req_profile *aprof;
     aprof = PROFILES;
+    ci_debug_printf(8, "Going to select a profile\n");
     while(aprof) {
-        if(ci_access_entry_match_request(aprof->access_list, 
+        ci_debug_printf(5, "Check whether we can use profile %s\n", aprof->name);
+        if(aprof->access_list &&
+           ci_access_entry_match_request(aprof->access_list, 
                                          req) == CI_ACCESS_ALLOW) {    
             return aprof;
         }
         aprof = aprof->next;
     }
-
+    
     /*If none match return NULL;*/
+    ci_debug_printf(8, "None of the profiles matches\n");
     return NULL;    
 }
 
@@ -123,7 +133,7 @@ int cfg_av_req_profile(char *directive, char **argv, void *setdata)
 {
     struct av_req_profile *prof;
     
-    if(!argv[0] || !argv[1] || !argv[2])
+    if(!argv[0] || !argv[1])
         return 0;
     
     prof=av_req_profile_get(argv[0]);

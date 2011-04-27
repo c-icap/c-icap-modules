@@ -121,6 +121,8 @@ static void srvclamav_parse_args(av_req_data_t * data, char *args);
 int cfg_ScanFileTypes(char *directive, char **argv, void *setdata);
 int cfg_SendPercentData(char *directive, char **argv, void *setdata);
 static int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata);
+int cfg_av_req_profile(char *directive, char **argv, void *setdata);
+int cfg_av_req_profile_access(char *directive, char **argv, void *setdata);
 /*Commands functions*/
 static void dbreload_command(char *name, int type, char **argv);
 /*General functions*/
@@ -143,6 +145,8 @@ static struct ci_conf_entry conf_variables[] = {
      {"StartSendingDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"StartSendPercentDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
+     {"Profile", NULL, cfg_av_req_profile, NULL},
+     {"ProfileAccess", NULL, cfg_av_req_profile_access, NULL},
      {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
      {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
 /*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
@@ -183,6 +187,7 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      int ret;
      magic_db = server_conf->MAGIC_DB;
      av_file_types_init(&SCAN_FILE_TYPES);
+     av_req_profile_init_profiles();
 
      ci_debug_printf(10, "Going to initialize srvclamav\n");
      ret = clamav_init_virusdb();
@@ -221,8 +226,6 @@ int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
 {
     if (!clamav_init())
         return CI_ERROR;
-
-    av_req_profile_init_profiles();
     return CI_OK;
 }
 
@@ -334,6 +337,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
      /*Select correct if any profile*/
      prof = av_req_profile_select(req);
      if (prof) {
+         ci_debug_printf(6, "Selected profile is: %s\n", prof->name);
          data->profile = prof;
          if (prof->max_object_size && MAX_OBJECT_SIZE > prof->max_object_size)
              data->max_object_size = prof->max_object_size;
@@ -503,7 +507,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 {
      av_req_data_t *data = ci_service_data(req);
      ci_simple_file_t *body;
-     char *http_client_ip;
+     const char *http_client_ip;
      unsigned long scanned_data = 0;
 
      if (!data || !data->body)
