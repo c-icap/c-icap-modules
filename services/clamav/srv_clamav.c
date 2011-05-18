@@ -678,6 +678,8 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
           type = SCAN;
      else if (type == VIR_SCAN && data->args.mode == 1) /*in simple mode */
           type = SCAN;
+     else if(data->args.mode == 4 && type == VIR_SCAN) 
+         type = SCAN; // We are in stream mode, there is no VIR_SCAN
      else if (type == VIR_SCAN && ci_req_type(req) != ICAP_RESPMOD)
           type = SCAN; /*Vir mode will not work in REQMOD requests*/
      else if (type == VIR_SCAN && (VIR_SAVE_DIR == NULL || VIR_HTTP_SERVER == NULL)) {
@@ -776,6 +778,8 @@ void srvclamav_parse_args(av_req_data_t * data, char *args)
                data->args.mode = 2;
           else if (strncmp(str + 5, "mixed", 5) == 0)
                data->args.mode = 3;
+          else if (strncmp(str + 5, "streamed", 8) == 0)
+               data->args.mode = 4;
      }
 }
 
