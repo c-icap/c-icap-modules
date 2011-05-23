@@ -185,8 +185,6 @@ sg_db_t *sg_init_db(char *home)
     sg_db->env_db=NULL;
     sg_db->domains_db=NULL;
     sg_db->urls_db=NULL;
-    sg_db->domains_db_name = NULL;
-    sg_db->urls_db_name = NULL;
 
     sg_db->env_db = db_setup(home);
     if(sg_db->env_db==NULL){
