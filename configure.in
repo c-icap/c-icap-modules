@@ -175,7 +175,7 @@ if test a"$libdb" != "ano"; then
       OLDCFLAGS=$CFLAGS
       OLDLDFLAGS=$LDFLAGS
       CFLAGS="-I$libdbpath/include $CFLAGS"
-      LDFLAGS="-L $libdbpath/lib -ldb $LDFLAGS"
+      LDFLAGS="-L$libdbpath/lib -ldb $LDFLAGS"
       echo -n "checking for Berkeley DB under $libdbpath... "
       AC_LINK_IFELSE(
                 [
@@ -187,7 +187,7 @@ if test a"$libdb" != "ano"; then
                          return 0;
                     }
                 ],
-               [BDB_ADD_LDFLAG="-L $libdbpath/lib -ldb"; BDB_ADD_FLAG="-I$libdbpath/include";libdb="yes"; echo "yes"], 
+               [BDB_ADD_LDFLAG="-L$libdbpath/lib -ldb"; BDB_ADD_FLAG="-I$libdbpath/include";libdb="yes"; echo "yes"], 
                [libdb="no"; echo "no"]
       )
 #restore CFLAGS/LDFLAGS
@@ -211,7 +211,7 @@ if test a"$libdb" != "ano"; then
         if test -d $libdbpath/include/db$DBVER; then
            echo -n "checking for Berleley DB under $libdbpath/include/db$DBVER and $libdbpath/lib/db$DBVER... "
            CFLAGS="-I$libdbpath/include/db$DBVER $OLDCFLAGS"
-           LDFLAGS="-L $libdbpath/lib/db$DBVER -ldb $OLDLDFLAGS" 
+           LDFLAGS="-L$libdbpath/lib/db$DBVER -ldb $OLDLDFLAGS" 
            AC_LINK_IFELSE(
                   [
                      #include <db.h>
