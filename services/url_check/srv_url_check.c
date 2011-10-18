@@ -213,7 +213,7 @@ void url_check_release_data(void *data)
      ci_object_pool_free(uc);    /*Return object to pool..... */
 }
 
-int get_protocol(char *str,int size) 
+int get_protocol(const char *str,int size) 
 {
     int i;
     for(i=0; protos[i]!=NULL; i++) {
@@ -226,7 +226,8 @@ int get_protocol(char *str,int size)
 int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
                   struct http_info *httpinf)
 {
-    char *str, *tmp;
+     const char *str;
+     char *tmp;
      int i, proxy_mode=0;
 
      /*Initialize htto_info struct*/
@@ -279,7 +280,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 	 httpinf->proto = get_protocol(str,str-tmp);
 	 str = tmp+3;
 	 i=0;
-	 while(*str!=':' && *str!= '/' && i < CI_MAXHOSTNAMELEN){
+	 while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && i < CI_MAXHOSTNAMELEN){
 	     httpinf->site[i] = *str;
 	     httpinf->url[i] = *str;
 	     i++;
@@ -289,7 +290,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 	 httpinf->url[i] = '\0';
 	 if(*str==':'){
 	     httpinf->port = strtol(str+1,&tmp,10);
-	     if(*tmp!='/') 
+	     if(!tmp || *tmp!='/') 
 		 return 0;
 	     /*Do we want the port contained into URL? if no:*/
 	     /*str = tmp;*/
@@ -321,13 +322,12 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
           return 0;
      }
      str += 5;
-     httpinf->http_major = strtol(str, &str, 10);
-     if (*str != '.') {
+     httpinf->http_major = strtol(str, &tmp, 10);
+     if (!tmp || *tmp != '.') {
           return 0;
      }
-     str++;
-     httpinf->http_minor = strtol(str, &str, 10);
-
+     str = tmp + 1;
+     httpinf->http_minor = strtol(str, NULL, 10);
 
      return 1;
 }
