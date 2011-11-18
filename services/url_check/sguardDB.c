@@ -300,9 +300,20 @@ int sg_domain_exists(sg_db_t *sg_db, char *domain)
 
 int sg_url_exists(sg_db_t *sg_db, char *url)
 {
+    char  *s;
     if (!sg_db->urls_db)
         return 0;
 
+    /*squidGuard removes the www[0-9]*, ftp[0-9]* and web[0-9]* 
+      prefixes from urls*/
+    if ( (url[0] == 'w' && url[1] == 'w' && url[2] == 'w') ||
+         (url[0] == 'w' && url[1] == 'e' && url[2] == 'b') ||
+         (url[0] == 'f' && url[1] == 't' && url[2] == 'p') ) {
+        s = url + 3;
+        while ( *s >= '0' && *s <= '9') s++;
+        if (*s == '.')
+            url = s+1;
+    }
     return db_entry_exists(sg_db->urls_db,url,compurlkey);
 }
 

@@ -237,6 +237,10 @@ if test a"$libdb" = "ayes"; then
     AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])
 fi
 
+# Check for header files
+AC_HEADER_STDC
+AC_CHECK_HEADERS(ctype.h)
+
 # Now determine which modules will going to build .....
 
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
