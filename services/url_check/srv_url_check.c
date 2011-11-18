@@ -262,11 +262,14 @@ int get_protocol(const char *str,int size)
     return 0;
 }
 
+/*Macro to convert a char hex digit to numeric*/
+#define ctox(h) (h >= 'A'? (toupper(h) - 'A' + 10) : toupper(h) - '0')
+
 int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
                   struct http_info *httpinf)
 {
      const char *str;
-     char *tmp;
+     char *tmp, c;
      int i, proxy_mode=0;
 
      /*Initialize htto_info struct*/
@@ -284,7 +287,9 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      /*Now get the site name */
      str = ci_headers_value(req_header, "Host");
      if (str) {
-          strncpy(httpinf->host, str, CI_MAXHOSTNAMELEN);
+          tmp = httpinf->host;
+          for (tmp = httpinf->host; *str != '\0' && (tmp - httpinf->host) < CI_MAXHOSTNAMELEN; tmp++,str++)
+               *tmp = tolower(*str); 
           httpinf->host[CI_MAXHOSTNAMELEN] = '\0';
      }
 
@@ -320,8 +325,8 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
 	 str = tmp+3;
 	 i=0;
 	 while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && i < CI_MAXHOSTNAMELEN){
-	     httpinf->site[i] = *str;
-	     httpinf->url[i] = *str;
+	     httpinf->site[i] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
+	     httpinf->url[i] = httpinf->site[i];
 	     i++;
 	     str++;
 	 }
@@ -343,14 +348,29 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      }
 
      i = strlen(httpinf->url);
-     while (*str != ' ' && *str != '?' && *str != '\0' && i < MAX_PAGE_SIZE)    /*copy page to the struct. */
-          httpinf->url[i++] = *str++;
-     
-     if (*str == '?') {
-	  httpinf->args = &(httpinf->url[i]);
-	  while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE) 
-	      httpinf->url[i++] = *str++; /*copy page arguments*/
+     while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE) {  /*copy page to the struct. */
+         if (*str == '?' && ! httpinf->args) {
+             httpinf->url[i++] = *str++;
+             httpinf->args = &(httpinf->url[i]);             
+         } else  if (*str == '%' && 
+                     isxdigit(*(str+1)) && 
+                     /* only printable ascii,  0x20 <= ascii  <= 0x7e :*/
+                     *(str+1) <= '7' && *(str+1) >= '2' &&
+                     isxdigit(*(str+2)) ) {
+             
+             c  = 16 * ctox(*(str+1)) + ctox(*(str+2));
+             /*if it is not space, '+', '%' and it is not 7f=127*/
+             if (strchr(" +%?", c) == NULL && c < 127) {
+                 httpinf->url[i++] = c;
+                 str += 3;
+             }
+             else
+                 httpinf->url[i++] = *str++;
+         }
+         else //TODO: maybe convert to %xx any non asciii char
+             httpinf->url[i++] = *str++;      
      }
+
      httpinf->url[i] = '\0';
 
      if (*str != ' ') {         /*Where is the protocol info????? */
