@@ -163,7 +163,8 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 
 char *srvclamav_compute_name(ci_request_t * req)
 {
-     char *str, *filename, *last_delim;
+     char *abuf;
+     const char *str, *filename, *last_delim;
      int namelen;
      if ((filename = ci_http_response_get_header(req, "Location")) != NULL) {
           if ((str = strrchr(filename, '/'))) {
@@ -172,9 +173,9 @@ char *srvclamav_compute_name(ci_request_t * req)
                     filename = str + 1;
           }
           if (filename != '\0') {
-	      str = ci_buffer_alloc(strlen(filename) + 1);
-	      strcpy(str, filename);
-	      return str;
+	      abuf = ci_buffer_alloc(strlen(filename) + 1);
+	      strcpy(abuf, filename);
+	      return abuf;
 	       
           } else
                return NULL;
@@ -208,10 +209,10 @@ char *srvclamav_compute_name(ci_request_t * req)
      if (namelen >= CI_FILENAME_LEN)
           namelen = CI_FILENAME_LEN - 1;
 
-     str = ci_buffer_alloc(namelen * sizeof(char) + 1);
-     strncpy(str, filename, namelen);
-     str[namelen] = '\0';
-     return str;
+     abuf = ci_buffer_alloc(namelen * sizeof(char) + 1);
+     strncpy(abuf, filename, namelen);
+     abuf[namelen] = '\0';
+     return abuf;
 }
 
 
@@ -263,7 +264,7 @@ char *construct_url(char *strformat, char *filename, char *user)
 }
 */
 
-int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
 
@@ -273,7 +274,7 @@ int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, char *param)
     return snprintf(buf, len, "%s", data->body->filename);
 }
 
-int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (! data->requested_filename)
@@ -282,7 +283,7 @@ int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, cha
     return snprintf(buf, len, "%s", data->requested_filename);
 }
 
-int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
 
@@ -293,7 +294,7 @@ int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, char *para
 }
 
 extern struct ci_fmt_entry srv_clamav_format_table [];
-int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, const char *param)
 {
     char url[1024];
     ci_format_text(req, VIR_HTTP_SERVER , url, 1024, srv_clamav_format_table);

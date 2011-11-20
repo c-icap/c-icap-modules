@@ -24,7 +24,7 @@ void av_req_profile_release_profiles() {
     }
 }
 
-static struct av_req_profile *av_req_profile_create(char *name) {
+static struct av_req_profile *av_req_profile_create(const char *name) {
     struct av_req_profile *aprof;
     if (!(aprof = malloc(sizeof(struct av_req_profile)))) {
         ci_debug_printf(1, "Error allocation memory for av_req_profile\n");
@@ -47,7 +47,7 @@ static void av_req_profile_destroy(struct av_req_profile *prof) {
     free(prof);
 }
 
-struct av_req_profile *av_req_profile_search(char *name)
+struct av_req_profile *av_req_profile_search(const char *name)
 {
     struct av_req_profile *aprof;
     aprof = PROFILES;
@@ -59,7 +59,7 @@ struct av_req_profile *av_req_profile_search(char *name)
     return NULL;
 }
 
-struct av_req_profile *av_req_profile_get(char *name) {
+struct av_req_profile *av_req_profile_get(const char *name) {
     struct av_req_profile *aprof;
     if ((aprof = av_req_profile_search(name)) != NULL)
         return aprof;
@@ -96,10 +96,10 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req)
 
 
 /*Implemented in srv_clamav.c*/
-int cfg_ScanFileTypes(char *directive, char **argv, void *setdata);
-int cfg_SendPercentData(char *directive, char **argv, void *setdata);
+int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
+int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
 /*******/
-int ap_req_profile_config_param(struct av_req_profile *prof, char *param, char **args) 
+int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, const char **args) 
 {
     if (!prof || !param || !args)
         return 0;
@@ -129,7 +129,7 @@ int ap_req_profile_config_param(struct av_req_profile *prof, char *param, char *
     return 0;
 }
 
-int cfg_av_req_profile(char *directive, char **argv, void *setdata)
+int cfg_av_req_profile(const char *directive, const char **argv, void *setdata)
 {
     struct av_req_profile *prof;
     
@@ -149,12 +149,12 @@ int cfg_av_req_profile(char *directive, char **argv, void *setdata)
     return 1;
 }
 
-int cfg_av_req_profile_access(char *directive, char **argv, void *setdata)
+int cfg_av_req_profile_access(const char *directive, const char **argv, void *setdata)
 {
     struct av_req_profile *prof;
     ci_access_entry_t *access_entry;
     int argc, error;
-    char *acl_spec_name;
+    const char *acl_spec_name;
     
     if(!argv[0] || !argv[1])
         return 0;

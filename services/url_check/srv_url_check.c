@@ -80,7 +80,7 @@ struct lookup_db {
   int type;
   unsigned int check;
   void *db_data;
-  void * (*load_db)(struct lookup_db *db, char *path);
+  void * (*load_db)(struct lookup_db *db, const char *path);
   int    (*lookup_db)(struct lookup_db *db, struct http_info *http_info, struct match_info *match_info);
   void   (*release_db)(struct lookup_db *db);
   struct lookup_db *next;
@@ -89,9 +89,9 @@ struct lookup_db {
 static struct lookup_db *LOOKUP_DBS = NULL;
 
 static int add_lookup_db(struct lookup_db *ldb);
-static struct lookup_db *new_lookup_db(char *name, int type,
+static struct lookup_db *new_lookup_db(const char *name, int type,
 				unsigned int check,
-				void *(*load_db)(struct lookup_db *ldb, char *path),
+				void *(*load_db)(struct lookup_db *ldb, const char *path),
 				int (*lookup_db)(struct lookup_db *ldb,
                                                  struct http_info *http_info,
                                                  struct match_info *match_info),
@@ -141,15 +141,15 @@ void url_check_close_service();
 //int    url_check_read(char *buf,int len,ci_request_t *req);
 
 /*Profile functions */
-static struct profile *profile_search(char *name);
+static struct profile *profile_search(const char *name);
 static struct profile *profile_select(ci_request_t *req);
 
 
 /*********************/
 /* Formating table   */
 
-int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, char *param);
+int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param);
 struct ci_fmt_entry srv_urlcheck_format_table [] = {
     {"%UU", "The HTTP url", fmt_srv_urlcheck_http_url},
     {"%UH", "The HTTP host", fmt_srv_urlcheck_host},
@@ -158,10 +158,10 @@ struct ci_fmt_entry srv_urlcheck_format_table [] = {
 
 
 /*Config functions*/
-int cfg_load_sg_db(char *directive, char **argv, void *setdata);
-int cfg_load_lt_db(char *directive, char **argv, void *setdata);
-int cfg_profile(char *directive, char **argv, void *setdata);
-int cfg_profile_access(char *directive, char **argv, void *setdata);
+int cfg_load_sg_db(const char *directive, const char **argv, void *setdata);
+int cfg_load_lt_db(const char *directive, const char **argv, void *setdata);
+int cfg_profile(const char *directive, const char **argv, void *setdata);
+int cfg_profile_access(const char *directive, const char **argv, void *setdata);
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
 #if defined(HAVE_BDB)
@@ -563,10 +563,10 @@ void match_info_append_db(struct match_info *match_info, const char *db_name)
 /******************************************************************/
 /* Lookup databases functions                                     */
 
-struct lookup_db *new_lookup_db(char *name,
+struct lookup_db *new_lookup_db(const char *name,
 				int type,
 				unsigned int check,
-				void *(*load_db)(struct lookup_db *,char *path),
+				void *(*load_db)(struct lookup_db *,const char *path),
 				int (*lookup_db)(struct lookup_db *ldb, 
                                                  struct http_info *http_info,
                                                  struct match_info *match_info),
@@ -610,7 +610,7 @@ int add_lookup_db(struct lookup_db *ldb)
   return 1;
 }
 
-struct lookup_db *search_lookup_db(char *name)
+struct lookup_db *search_lookup_db(const char *name)
 {
   struct lookup_db *tmp_ldb;
   if((tmp_ldb=LOOKUP_DBS) == NULL)
@@ -659,7 +659,7 @@ struct profile *profile_select(ci_request_t *req)
   return default_profile;
 }
 
-struct profile *profile_search(char *name)
+struct profile *profile_search(const char *name)
 {
   struct profile *tmp_profile;
   tmp_profile = PROFILES;
@@ -671,7 +671,7 @@ struct profile *profile_search(char *name)
   return NULL;
 }
 
-struct profile *profile_check_add(char *name)
+struct profile *profile_check_add(const char *name)
 {
   struct profile *tmp_profile;
   if((tmp_profile=profile_search(name)))
@@ -748,7 +748,7 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
   return DB_PASS;
 }
 
-int cfg_profile(char *directive, char **argv, void *setdata)
+int cfg_profile(const char *directive, const char **argv, void *setdata)
 {
   int i,type=0;
   struct profile *prof;
@@ -786,12 +786,12 @@ int cfg_profile(char *directive, char **argv, void *setdata)
   return 1;
 }
 
-int cfg_profile_access(char *directive, char **argv, void *setdata)
+int cfg_profile_access(const char *directive, const char **argv, void *setdata)
 {
    struct profile *prof;
    ci_access_entry_t *access_entry;
    int argc, error;
-   char *acl_spec_name;
+   const char *acl_spec_name;
 
    if(!argv[0] || !argv[1])
     return 0;
@@ -831,7 +831,7 @@ int cfg_profile_access(char *directive, char **argv, void *setdata)
 /* SguidGuard Databases                                          */
 
 #if defined(HAVE_BDB)
-void *sg_load_db(struct lookup_db *db, char *path)
+void *sg_load_db(struct lookup_db *db, const char *path)
 {
   sg_db_t *sg_db;
   sg_db = sg_init_db( db->name, path);
@@ -876,7 +876,7 @@ struct command_sg_db_data {
    struct lookup_db *ldb;
 };
 
-void command_open_sg_db(char *name, int type, void *data)
+void command_open_sg_db(const char *name, int type, void *data)
 {
   struct command_sg_db_data *sg_data;
   struct lookup_db *ldb;
@@ -890,7 +890,7 @@ void command_open_sg_db(char *name, int type, void *data)
 }
 
 
-int cfg_load_sg_db(char *directive, char **argv, void *setdata) 
+int cfg_load_sg_db(const char *directive, const char **argv, void *setdata) 
 {
   struct lookup_db *ldb;
   struct command_sg_db_data *db_data;
@@ -928,7 +928,7 @@ int cfg_load_sg_db(char *directive, char **argv, void *setdata)
 /* c-icap lookup table databases                                 */
 
 
-void *lt_load_db(struct lookup_db *db, char *path)
+void *lt_load_db(struct lookup_db *db, const char *path)
 {
   struct ci_lookup_table *lt_db;
   lt_db = ci_lookup_table_create(path);
@@ -1054,7 +1054,7 @@ void lt_release_db(struct lookup_db *ldb)
 }
 
 
-int cfg_load_lt_db(char *directive, char **argv, void *setdata) 
+int cfg_load_lt_db(const char *directive, const char **argv, void *setdata) 
 {
   struct lookup_db *ldb;
   unsigned int check;
@@ -1111,14 +1111,14 @@ int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct mat
 
 /*****************************/
 /* Formating table functions */
-int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);  
     /*Do notwrite more than 512 bytes*/
     return snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uc->httpinf.url);
 }
 
-int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);  
     return snprintf(buf, len, "%s", uc->httpinf.host);

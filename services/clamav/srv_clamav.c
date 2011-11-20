@@ -72,15 +72,15 @@ static int AV_VIRUSES_FOUND = -1;
 
 /*********************/
 /* Formating table   */
-static int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, char *param);
-static int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, char *param);
-static int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, char *param);
+static int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, const char *param);
 #ifdef VIRALATOR_MODE
-int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, char *param);
-int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, char *param);
+int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, const char *param);
 #endif
 struct ci_fmt_entry srv_clamav_format_table [] = {
     {"%VVN", "Virus name", fmt_srv_clamav_virusname},
@@ -118,13 +118,13 @@ static int srvclamav_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
 /*Arguments parse*/
 static void srvclamav_parse_args(av_req_data_t * data, char *args);
 /*Configuration Functions*/
-int cfg_ScanFileTypes(char *directive, char **argv, void *setdata);
-int cfg_SendPercentData(char *directive, char **argv, void *setdata);
-static int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata);
-int cfg_av_req_profile(char *directive, char **argv, void *setdata);
-int cfg_av_req_profile_access(char *directive, char **argv, void *setdata);
+int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
+int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
+static int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata);
+int cfg_av_req_profile(const char *directive, const char **argv, void *setdata);
+int cfg_av_req_profile_access(const char *directive, const char **argv, void *setdata);
 /*Commands functions*/
-static void dbreload_command(char *name, int type, char **argv);
+static void dbreload_command(const char *name, int type, const char **argv);
 /*General functions*/
 static int get_filetype(ci_request_t * req);
 static void set_istag(ci_service_xdata_t * srv_xdata);
@@ -785,7 +785,7 @@ void srvclamav_parse_args(av_req_data_t * data, char *args)
 
 /****************************************************************************************/
 /*Commands functions                                                                    */
-void dbreload_command(char *name, int type, char **argv)
+void dbreload_command(const char *name, int type, const char **argv)
 {
      ci_debug_printf(1, "Clamav virus database reload command received\n");
      if (!clamav_reload_virusdb())
@@ -797,7 +797,7 @@ void dbreload_command(char *name, int type, char **argv)
 /****************************************************************************************/
 /*Configuration Functions                                                               */
 
-int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
+int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata)
 {
      int i, id;
      int type = NO_SCAN;
@@ -837,7 +837,7 @@ int cfg_ScanFileTypes(char *directive, char **argv, void *setdata)
 }
 
 
-int cfg_SendPercentData(char *directive, char **argv, void *setdata)
+int cfg_SendPercentData(const char *directive, const char **argv, void *setdata)
 {
      int val = 0;
      char *end;
@@ -859,7 +859,7 @@ int cfg_SendPercentData(char *directive, char **argv, void *setdata)
 
 
 
-int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
+int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata)
 {
      struct stat stat_buf;
      if (argv == NULL || argv[0] == NULL) {
@@ -885,7 +885,7 @@ int cfg_ClamAvTmpDir(char *directive, char **argv, void *setdata)
 /**************************************************************/
 /* srv_clamav templates  formating table                      */
 
-int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (! data->virus_name)
@@ -894,18 +894,18 @@ int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, char *param)
     return snprintf(buf, len, "%s", data->virus_name);
 }
 
-int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, const char *param)
 {
     return snprintf(buf, len, "%s", CLAMAV_VERSION);
 }
 
-int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     return snprintf(buf, len, "%s", data->url_log);
 }
 
-int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, char *param)
+int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (data->profile)
