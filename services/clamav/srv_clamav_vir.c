@@ -149,6 +149,7 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 						     "VIR_MODE_VIRUS_FOUND",
 						     srv_clamav_format_table);
 	  data->error_page = error_page;
+          data->vir_mode_state = VIR_TAIL;
 	  fchmod(data->body->fd, 0);
      }
      else if (data->body) {
