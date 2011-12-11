@@ -44,6 +44,11 @@ char *CLAMAV_TMP = NULL;
 #define CLAMAV_VERSION_SIZE 64
 char CLAMAV_VERSION[CLAMAV_VERSION_SIZE];
 
+#ifdef HAVE_FD_PASSING
+int USE_CLAMD = 0;
+char *CLAMD_SOCKET_PATH = "/var/run/clamav/clamd.ctl";
+#endif
+
 void generate_error_page(av_req_data_t * data, ci_request_t * req);
 char *srvclamav_compute_name(ci_request_t * req);
 /***********************************************************************************/
@@ -147,6 +152,10 @@ static struct ci_conf_entry conf_variables[] = {
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
      {"Profile", NULL, cfg_av_req_profile, NULL},
      {"ProfileAccess", NULL, cfg_av_req_profile_access, NULL},
+#ifdef HAVE_FD_PASSING
+     {"UseClamd", &USE_CLAMD, ci_cfg_onoff, NULL},
+     {"ClamdSocket", &CLAMD_SOCKET_PATH, ci_cfg_set_str, NULL},
+#endif
      {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
      {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
 /*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
@@ -184,17 +193,12 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
-     int ret;
      magic_db = server_conf->MAGIC_DB;
      av_file_types_init(&SCAN_FILE_TYPES);
      av_req_profile_init_profiles();
 
      ci_debug_printf(10, "Going to initialize srvclamav\n");
-     ret = clamav_init_virusdb();
-     if (!ret)
-          return CI_ERROR;
      srv_clamav_xdata = srv_xdata;      /*Needed by db_reload command */
-     set_istag(srv_clamav_xdata);
      ci_service_set_preview(srv_xdata, 1024);
      ci_service_enable_204(srv_xdata);
      ci_service_set_transfer_preview(srv_xdata, "*");
@@ -226,6 +230,8 @@ int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
 {
     if (!clamav_init())
         return CI_ERROR;
+
+    set_istag(srv_clamav_xdata);
     return CI_OK;
 }
 
@@ -525,7 +531,8 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      ci_debug_printf(6, "Scan from file\n");
      
      lseek(body->fd, 0, SEEK_SET);
-     data->virus_name = clamav_scan(body->fd, &scanned_data);
+     /*TODO Must check for errors*/
+     clamav_scan(body->fd, &data->virus_name);
      ci_stat_uint64_inc(AV_SCAN_REQS, 1);
      ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
      ci_debug_printf(6,

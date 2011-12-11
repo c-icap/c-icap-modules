@@ -76,8 +76,8 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req);
 
 /*Clamav support functions*/
 int clamav_init();
-char *clamav_scan(int fd, unsigned long *scanned_data);
-void clamav_get_versions(unsigned int *level, unsigned int *version, char *str, size_t len);
+int clamav_scan(int fd, char **virus);
+int clamav_get_versions(unsigned int *level, unsigned int *version, char *str, size_t len);
 int clamav_init_virusdb();
 int clamav_reload_virusdb();
 void clamav_destroy_virusdb();

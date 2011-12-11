@@ -242,6 +242,27 @@ if test a"$libdb" = "ayes"; then
     AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])
 fi
 
+AC_MSG_CHECKING([if fds can send through unix sockets])
+AC_TRY_COMPILE(
+       [
+      #include <sys/socket.h>
+      #include <sys/un.h>
+       ],
+      [
+      int main(int argc, char **argv) {
+             struct msghdr mh;
+             struct cmsghdr cmh;
+             mh.msg_control = (caddr_t) NULL;
+             mh.msg_controllen = 0;
+             cmh.cmsg_level = SOL_SOCKET;
+             cmh.cmsg_type = SCM_RIGHTS;
+      }
+      ],
+AC_DEFINE(HAVE_FD_PASSING,1,[Define HAVE_FD_PASSING if sending fd through unix socket supported])
+AC_MSG_RESULT(yes), 
+AC_MSG_RESULT(no),
+)
+
 # Check for header files
 AC_HEADER_STDC
 AC_CHECK_HEADERS(ctype.h)
