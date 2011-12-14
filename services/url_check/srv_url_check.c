@@ -834,7 +834,7 @@ int cfg_profile_access(const char *directive, const char **argv, void *setdata)
 void *sg_load_db(struct lookup_db *db, const char *path)
 {
   sg_db_t *sg_db;
-  sg_db = sg_init_db( db->name, path);
+  sg_db = sg_init_db( db->name, path, 0);
   return (db->db_data = (void *)sg_db);
 }
 
@@ -883,7 +883,7 @@ void command_open_sg_db(const char *name, int type, void *data)
   sg_db_t *sg_db;
   sg_data = (struct command_sg_db_data *)data;
   ldb = (struct lookup_db *)sg_data->ldb;
-  sg_db = sg_init_db(ldb->name, sg_data->path);
+  sg_db = sg_init_db(ldb->name, sg_data->path, 0);
   ldb->db_data = (void *)sg_db;
 
   free(sg_data);

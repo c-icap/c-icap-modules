@@ -16,6 +16,11 @@ if USEBDB
  srv_url_check_la_LIBADD += @BDB_ADD_LDFLAG@ -ldb
  srv_url_check_la_CFLAGS += @BDB_ADD_FLAG@
  srv_url_check_la_SOURCES += sguardDB.c
+
+ bin_PROGRAMS = c-icap-mods-sguardDB
+ c_icap_mods_sguardDB_SOURCES =  sguardDB.c
+ c_icap_mods_sguardDB_LDADD = @UTILITIES_LIBADD@ @BDB_ADD_LDFLAG@ -ldb
+ c_icap_mods_sguardDB_CFLAGS = @BDB_ADD_FLAG@ -DBUILD_SGUARD_TOOL
 endif
 
 install-data-local:

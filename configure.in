@@ -33,6 +33,8 @@ AC_ARG_WITH(c-icap,
        cicapprefix=`$withval/bin/c-icap-config --prefix`
        cicapmods=`$withval/bin/c-icap-config --modulesdir`
        cicapdatadir=`$withval/bin/c-icap-config --datarootdir`
+       cicaplibflags=`$withval/bin/c-icap-libicapapi-config --cflags`
+       cicapliblibs=`$withval/bin/c-icap-libicapapi-config --libs`
     else
        cicapflags=`c-icap-config --cflags`
        cicaplibs=`c-icap-config --libs` 
@@ -40,6 +42,8 @@ AC_ARG_WITH(c-icap,
        cicapprefix=`c-icap-config --prefix`
        cicapmods=`c-icap-config --modulesdir`
        cicapdatadir=`c-icap-config --datarootdir`
+       cicaplibflags=`c-icap-libicapapi-config --cflags`
+       cicapliblibs=`c-icap-libicapapi-config --libs`
     fi
 ],
 )
@@ -52,6 +56,8 @@ if test -z "$cicapdir"; then
         cicapprefix=`c-icap-config --prefix`
         cicapmods=`c-icap-config --modulesdir`
         cicapdatadir=`c-icap-config --datarootdir`
+        cicaplibflags=`c-icap-libicapapi-config --cflags`
+        cicapliblibs=`c-icap-libicapapi-config --libs`
     else
         echo "ERROR: c-icap-config not found!"
 	exit -1;
@@ -62,10 +68,14 @@ AM_CONDITIONAL(CICAPMODULESDIR, [test -n $cicapmods])
 
 CFLAGS="$CFLAGS $cicapflags"
 MODULES_LIBADD="$cicaplibs"
+UTILITIES_LIBADD="$cicapliblibs"
+UTILITIES_CFLAGS="$cicaplibflags"
 CONFDIR="$cicapetc"
 MODSDIR="$cicapmods"
 DATADIR="$cicapdatadir"
 AC_SUBST(MODULES_LIBADD)
+AC_SUBST(UTILITIES_LIBADD)
+AC_SUBST(UTILITIES_CFLAGS)
 AC_SUBST(CONFDIR)
 AC_SUBST(MODSDIR)
 AC_SUBST(DATADIR)
