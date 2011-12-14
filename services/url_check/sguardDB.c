@@ -148,7 +148,8 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename,
 	return NULL;
     }
     //     dbp->set_flags(dbp, DB_DUP);
-    dbp->set_bt_compare(dbp, bt_compare_fcn);
+    if (bt_compare_fcn)
+        dbp->set_bt_compare(dbp, bt_compare_fcn);
 
 
 #if(DB_VERSION_MINOR>=1)
@@ -193,7 +194,7 @@ sg_db_t *sg_init_db(char *home)
     }
 
     sg_db->domains_db = sg_open_db(sg_db->env_db, "domains.db", domainCompare);
-    sg_db->urls_db = sg_open_db(sg_db->env_db, "urls.db", compare_str);
+    sg_db->urls_db = sg_open_db(sg_db->env_db, "urls.db", NULL);
 
     if(sg_db->domains_db == NULL && sg_db->urls_db== NULL) {
 	sg_close_db(sg_db);
