@@ -46,12 +46,13 @@ char *srvclamav_compute_name(ci_request_t * req);
 void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
 {
      ci_membuf_t *error_page;
+     char buf[512];
+     const char *lang;
      ci_http_response_reset_headers(req);
      ci_http_response_add_header(req, "HTTP/1.1 200 OK");
      ci_http_response_add_header(req, "Server: C-ICAP/srvclamav");
      ci_http_response_add_header(req, "Connection: close");
      ci_http_response_add_header(req, "Content-Type: text/html");
-     ci_http_response_add_header(req, "Content-Language: en");
 
      data->last_update = time(NULL);
      data->requested_filename = NULL;
@@ -72,6 +73,15 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
 
      error_page = ci_txt_template_build_content(req, "srv_clamav", "VIR_MODE_HEAD",
 						srv_clamav_format_table);
+
+     lang = ci_membuf_attr_get(error_page, "lang");
+     if (lang) {
+         snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
+         buf[sizeof(buf)-1] = '\0';
+         ci_http_response_add_header(req, buf);
+     }
+     else
+         ci_http_response_add_header(req, "Content-Language: en");
 
      assert( data->error_page==NULL);
      data->error_page = error_page;

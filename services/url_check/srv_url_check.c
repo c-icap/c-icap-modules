@@ -400,6 +400,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      ci_headers_list_t *req_header;
      ci_membuf_t *err_page;
      char buf[256];
+     const char *lang;
      struct url_check_data *uc = ci_service_data(req);     
      struct profile *profile;
      int clen = 0;
@@ -462,10 +463,17 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
           ci_http_response_add_header(req, "Server: C-ICAP");
           ci_http_response_add_header(req, "Content-Type: text/html");
-          ci_http_response_add_header(req, "Content-Language: en");
           ci_http_response_add_header(req, "Connection: close");
 
 	  err_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
+          lang = ci_membuf_attr_get(err_page, "lang");
+          if (lang) {
+              snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
+              buf[sizeof(buf)-1] = '\0';
+              ci_http_response_add_header(req, buf);
+          }
+          else
+              ci_http_response_add_header(req, "Content-Language: en");
 	  /*Are we sure that the txt_template code does not return a NULL page?
 	    Well, yes ...
 	   */

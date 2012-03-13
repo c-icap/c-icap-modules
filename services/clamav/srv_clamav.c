@@ -712,11 +712,12 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 void generate_error_page(av_req_data_t * data, ci_request_t * req)
 {
      ci_membuf_t *error_page;
-     char buf[128];
+     char buf[1024];
+     const char *lang;
 
-     snprintf(buf, 128, "X-Infection-Found: Type=0; Resolution=2; Threat=%s;",
+     snprintf(buf, sizeof(buf), "X-Infection-Found: Type=0; Resolution=2; Threat=%s;",
               data->virus_name);
-     buf[127] = '\0';
+     buf[sizeof(buf)-1] = '\0';
      ci_icap_add_xheader(req, buf);
 
      if ( ci_http_response_headers(req))
@@ -727,10 +728,19 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
      ci_http_response_add_header(req, "Server: C-ICAP");
      ci_http_response_add_header(req, "Connection: close");
      ci_http_response_add_header(req, "Content-Type: text/html");
-     ci_http_response_add_header(req, "Content-Language: en");
 
      error_page = ci_txt_template_build_content(req, "srv_clamav", "VIRUS_FOUND",
                            srv_clamav_format_table);
+
+     lang = ci_membuf_attr_get(error_page, "lang");
+     if (lang) {
+         snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
+         buf[sizeof(buf)-1] = '\0';
+         ci_http_response_add_header(req, buf);
+     }
+     else
+         ci_http_response_add_header(req, "Content-Language: en");
+
      data->error_page = error_page;
 }
 
