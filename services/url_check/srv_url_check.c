@@ -63,10 +63,12 @@ struct http_info {
     char *args;
 };
 
-#define _MATCHDB_SZ 512
+#define _MATCHDB_SZ 1024
+#define _DB_NAME_SIZE 128
 struct match_info {
     char matched_dbs[_MATCHDB_SZ];
     int match_length;
+    char action_db[_DB_NAME_SIZE];
     int action;
 };
 
@@ -150,9 +152,13 @@ static struct profile *profile_select(ci_request_t *req);
 
 int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param);
 int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param);
 struct ci_fmt_entry srv_urlcheck_format_table [] = {
     {"%UU", "The HTTP url", fmt_srv_urlcheck_http_url},
     {"%UH", "The HTTP host", fmt_srv_urlcheck_host},
+    {"%UM", "The matched Categories", fmt_srv_urlcheck_matched_dbs},
+    {"%UB", "The blocked category", fmt_srv_urlcheck_blocked_db},
     { NULL, NULL, NULL}
 };
 
@@ -432,6 +438,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      }
      
      if (uc->match_info.matched_dbs[0]) {
+         ci_request_set_str_attribute(req,"url_check:matched_cat", uc->match_info.matched_dbs);
          snprintf(buf, sizeof(buf), "X-Attribute: %s", uc->match_info.matched_dbs);
          buf[sizeof(buf)-1] = '\0';
          ci_icap_add_xheader(req, buf);         
@@ -442,10 +449,18 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
          ci_icap_add_xheader(req, buf);         
      }
      if (uc->match_info.action >=0) {
+         ci_request_set_str_attribute(req,"url_check:action", ACTION_STR(uc->match_info.action));
          snprintf(buf, sizeof(buf), "X-Response-Info: %s", ACTION_STR(uc->match_info.action));
          buf[sizeof(buf)-1] = '\0';
-         ci_icap_add_xheader(req, buf);         
+         ci_icap_add_xheader(req, buf);
+         if (uc->match_info.action_db[0] != '\0') {
+             ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
+             snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+             buf[sizeof(buf)-1] = '\0';
+             ci_icap_add_xheader(req, buf);
+         }
      }
+
      /*
        TODO: When 206 ICAP responses be supported implement configuration parameter
        which appends HTTP headers if any URL matches.
@@ -551,6 +566,7 @@ void match_info_init(struct match_info *match_info)
 {
     match_info->matched_dbs[0] = '\0';
     match_info->match_length = 0;
+    match_info->action_db[0] = '\0';
     match_info->action = -1;
 }
 
@@ -745,8 +761,11 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
     if (db->lookup_db(db, info, match_info)) {
 	ci_debug_printf(5, "The db :%s matches! \n", db->name);
         match_info->action = adb->pass;
-        if(adb->pass != DB_MATCH) /*if it is DB_MATCH just continue checking*/
-            return adb->pass;
+        if(match_info->action != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
+            strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
+            match_info->action_db[_DB_NAME_SIZE - 1] = '\0';
+            return match_info->action;
+        }
     }
     adb=adb->next;
   }
@@ -1131,3 +1150,16 @@ int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *par
     struct url_check_data *uc = ci_service_data(req);  
     return snprintf(buf, len, "%s", uc->httpinf.host);
 }
+
+int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const char *param)
+{
+    struct url_check_data *uc = ci_service_data(req);  
+    return snprintf(buf, len, "%s", uc->match_info.matched_dbs);
+}
+
+int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param)
+{
+    struct url_check_data *uc = ci_service_data(req);  
+    return snprintf(buf, len, "%s", uc->match_info.action_db);
+}
+
