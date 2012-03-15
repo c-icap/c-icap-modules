@@ -541,6 +541,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (data->virus_name) { /*A virus found*/
+         ci_request_set_str_attribute(req,"srv_clamav:virus", data->virus_name);
          ci_stat_uint64_inc(AV_VIRUSES_FOUND, 1);
 	  http_client_ip = ci_headers_value(req->request_header, "X-Client-IP");
           ci_debug_printf(1, "VIRUS DETECTED: %s , http client ip: %s, http user: %s, http url: %s \n ",
@@ -564,17 +565,22 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
               }
 #endif /*VIRELATOR_MODE*/
                generate_error_page(data, req);
+               ci_request_set_str_attribute(req,"srv_clamav:action", "blocked");
           }
 #ifdef VIRALATOR_MODE
           else if (data->must_scanned == VIR_SCAN) {
                endof_data_vir_mode(data, req);
+               ci_request_set_str_attribute(req,"srv_clamav:action", "blocked");
           }
 #endif /*VIRELATOR_MODE*/
-          else
+          else {
                ci_debug_printf(5, "Simply no other data sent\n");
+               ci_request_set_str_attribute(req,"srv_clamav:action", "partiallyblocked");
+          }
           return CI_MOD_DONE;
      }
 
+     ci_request_set_str_attribute(req,"srv_clamav:action", "passed");
 #ifdef VIRALATOR_MODE
      if (data->must_scanned == VIR_SCAN) {
           endof_data_vir_mode(data, req);
