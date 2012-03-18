@@ -959,7 +959,7 @@ void *lt_load_db(struct lookup_db *db, const char *path)
 {
   struct ci_lookup_table *lt_db;
   lt_db = ci_lookup_table_create(path);
-  if(lt_db && !lt_db->open(lt_db)) {
+  if(lt_db && !ci_lookup_table_open(lt_db)) {
     ci_lookup_table_destroy(lt_db);
     lt_db = NULL;
   }
@@ -980,14 +980,14 @@ char *find_last(char *s,char *e,const char accept)
 
 int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info)
 {
-  void **vals=NULL;
-  void *ret = NULL;
+  char **vals=NULL;
+  const char *ret = NULL;
   char *s, *snext, *e, *end, store;
   int len, full_url =0;
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
   switch(ldb->check) {
   case CHECK_HOST:
-      ret = lt_db->search(lt_db, http_info->site, &vals);
+      ret = ci_lookup_table_search(lt_db, http_info->site, &vals);
       break;
   case CHECK_DOMAIN:
       s = http_info->site;
@@ -995,8 +995,8 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       do {
 	  s++;
 	  ci_debug_printf(5, "Checking  domain %s ....\n", s);
-	  ret = lt_db->search(lt_db, s, &vals);
-	  lt_db->release_result(lt_db, vals);
+	  ret = ci_lookup_table_search(lt_db, s, &vals);
+	  ci_lookup_table_release_result(lt_db, (void **)vals);
       } while (!ret && (s=strchr(s, '.')));
       break;
   case CHECK_FULL_URL:
@@ -1037,8 +1037,8 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 	      store = *e;
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
 	      ci_debug_printf(9,"Going to check url: %s\n", s);
-	      ret = lt_db->search(lt_db, s, &vals);
-	      lt_db->release_result(lt_db, vals);
+	      ret = ci_lookup_table_search(lt_db, s, &vals);
+	      ci_lookup_table_release_result(lt_db, (void **)vals);
               if (ret)
                   match_info->match_length = strlen(s);
 
@@ -1062,7 +1062,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       break;
   }
   if(vals)
-    lt_db->release_result(lt_db,vals);
+    ci_lookup_table_release_result(lt_db, (void **)vals);
   
   if (ret) {
       match_info_append_db(match_info, ldb->name);
