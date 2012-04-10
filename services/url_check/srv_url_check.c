@@ -43,6 +43,7 @@ enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
 #define CHECK_DOMAIN   0x08
 #define CHECK_SRV_IP   0x10
 #define CHECK_SRV_NET  0x20
+#define CHECK_SIMPLE_URL 0x40
 
 #define MAX_URL_SIZE  65536
 #define MAX_PAGE_SIZE (MAX_URL_SIZE - CI_MAXHOSTNAMELEN)
@@ -68,12 +69,20 @@ struct http_info {
 struct match_info {
     char matched_dbs[_MATCHDB_SZ];
     int match_length;
+    char last_subcat[_DB_NAME_SIZE];
     char action_db[_DB_NAME_SIZE];
     int action;
 };
 
 static void match_info_init(struct match_info *match_info);
-static void match_info_append_db(struct match_info *match_info, const char *);
+static void match_info_append_db(struct match_info *match_info, const char *, const char *);
+
+enum {SBC_EQ = 1, SBC_LESS, SBC_GREATER};
+struct subcats_data{
+    const char *str;
+    int op;
+    int score;
+};
 
 enum lookupdb_types {DB_INTERNAL, DB_SG, DB_LOOKUP};
 
@@ -83,7 +92,7 @@ struct lookup_db {
   unsigned int check;
   void *db_data;
   void * (*load_db)(struct lookup_db *db, const char *path);
-  int    (*lookup_db)(struct lookup_db *db, struct http_info *http_info, struct match_info *match_info);
+    int    (*lookup_db)(struct lookup_db *db, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
   void   (*release_db)(struct lookup_db *db);
   struct lookup_db *next;
 };
@@ -96,11 +105,12 @@ static struct lookup_db *new_lookup_db(const char *name, int type,
 				void *(*load_db)(struct lookup_db *ldb, const char *path),
 				int (*lookup_db)(struct lookup_db *ldb,
                                                  struct http_info *http_info,
-                                                 struct match_info *match_info),
+                                                 struct match_info *match_info,
+                                                 ci_ptr_vector_t *subcats),
 				void (*release_db)(struct lookup_db *ldb)
 				);
 /* ALL lookup_db functions*/
-static int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info);
+static int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
 static void release_lookup_dbs();
 
 enum actions_enum { DB_ERROR=-1, DB_BLOCK=0, DB_PASS, DB_MATCH, DB_ACT_MAX};
@@ -115,6 +125,7 @@ static const char *actions_str[] = {
 
 struct access_db {
   struct lookup_db *db;
+  ci_ptr_vector_t *subcats;
   int pass;
   struct access_db *next;
 };
@@ -454,8 +465,16 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
          buf[sizeof(buf)-1] = '\0';
          ci_icap_add_xheader(req, buf);
          if (uc->match_info.action_db[0] != '\0') {
-             ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
-             snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+             if (uc->match_info.last_subcat[0] != '\0') {
+                 snprintf(buf, sizeof(buf), "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
+                 buf[sizeof(buf)-1] = '\0';
+                 ci_request_set_str_attribute(req,"url_check:action_cat", buf);
+                 snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, ACTION_STR(uc->match_info.action));
+             }
+             else {
+                 ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
+                 snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+             }
              buf[sizeof(buf)-1] = '\0';
              ci_icap_add_xheader(req, buf);
          }
@@ -570,7 +589,7 @@ void match_info_init(struct match_info *match_info)
     match_info->action = -1;
 }
 
-void match_info_append_db(struct match_info *match_info, const char *db_name)
+void match_info_append_db(struct match_info *match_info, const char *db_name, const char *sub_cats)
 {
     int len = strlen(match_info->matched_dbs);
     if (len >0 ) {/*if it is not empty*/
@@ -580,8 +599,16 @@ void match_info_append_db(struct match_info *match_info, const char *db_name)
         match_info->matched_dbs[len++] = ' ';
         match_info->matched_dbs[len] = '\0';
     }
-    /*strncat always put a '\0' at the end*/
-    strncat(match_info->matched_dbs + len, db_name, _MATCHDB_SZ-len);
+    if (!sub_cats) {
+        /*strncat always put a '\0' at the end*/
+        strncat(match_info->matched_dbs + len, db_name, _MATCHDB_SZ-len);
+        match_info->last_subcat[0] = '\0';
+    } else {
+        snprintf(match_info->matched_dbs + len, _MATCHDB_SZ-len, "%s{%s}", db_name, sub_cats);
+        match_info->matched_dbs[_MATCHDB_SZ - 1] = '\0';
+        strncpy(match_info->last_subcat, sub_cats, _DB_NAME_SIZE);
+        match_info->last_subcat[_DB_NAME_SIZE - 1] = '\0';
+    }   
 }
 
 /******************************************************************/
@@ -593,7 +620,8 @@ struct lookup_db *new_lookup_db(const char *name,
 				void *(*load_db)(struct lookup_db *,const char *path),
 				int (*lookup_db)(struct lookup_db *ldb, 
                                                  struct http_info *http_info,
-                                                 struct match_info *match_info),
+                                                 struct match_info *match_info,
+                                                 ci_ptr_vector_t *subcats),
 				void (*release_db)(struct lookup_db *ldb)
 				)
 {
@@ -714,7 +742,7 @@ struct profile *profile_check_add(const char *name)
   return (PROFILES = tmp_profile);
 }
 
-struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int type)
+struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int type, ci_ptr_vector_t *cats)
 {
   struct access_db *new_adb,*tmp_adb;
   if(!prof || !db)
@@ -722,6 +750,7 @@ struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int
   
   new_adb = malloc(sizeof(struct access_db));
   new_adb->db = db;
+  new_adb->subcats = cats;
   new_adb->pass = type;
   new_adb->next = NULL;
   
@@ -758,7 +787,7 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
     }
     ci_debug_printf(5, "Going to check the db %s for %s request\n", db->name, ACTION_STR(adb->pass));
 
-    if (db->lookup_db(db, info, match_info)) {
+    if (db->lookup_db(db, info, match_info, adb->subcats)) {
 	ci_debug_printf(5, "The db :%s matches! \n", db->name);
         match_info->action = adb->pass;
         if(match_info->action != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
@@ -775,11 +804,93 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
   return DB_PASS;
 }
 
+/*Should be moved to a utility library*/
+static void str_trim(char *str)
+{
+    char *s, *e;
+
+    if (!str)
+        return;
+
+    s = str;
+    e = NULL;
+    while (*s == ' ' && s != '\0'){
+        e = s;
+        while (*e != '\0'){
+            *e = *(e+1);
+            e++;
+        }
+    }
+
+    /*if (e) e--;  else */
+    e = str+strlen(str);
+    while(*(--e) == ' ' && e >= str) *e = '\0';
+}
+
+static char *parse_argument(const char *arg, ci_ptr_vector_t **params)
+{
+    struct subcats_data *sdata;
+    char *s, *name;
+    size_t len, k;
+    if (!params)
+        return strdup(arg);
+
+    *params = NULL;
+    name = strdup(arg);
+    if ((s = index(name, '{')) != NULL) {
+        *s = '\0';
+        s++;
+        while((len = strcspn(s, ",}")) != 0) {
+             s[len] = '\0';
+             str_trim(s);
+             if (strlen(s) != 0) {
+                 if (*params == NULL)
+                     *params = ci_ptr_vector_create(1024);
+                 
+                 sdata = malloc(sizeof(struct subcats_data));
+                 if (!sdata) {
+                     free(name);
+                     return NULL;
+                 }
+
+                 /*Check if there is the operator '>' or '<'*/
+                 k = strcspn(s, "<>");
+                 if (k != 0 && (s[k] == '>' || s[k] == '<')) {
+                     sdata->op = (s[k] == '>' ? SBC_GREATER : SBC_LESS);
+                     s[k] = '\0';
+                     sdata->score = strtol(s+k+1, NULL, 10);
+                     if (sdata->score <=0 ) {
+                         ci_debug_printf(5, "Parse error: cat: %s, op: %d, score: %d (in %s)\n", 
+                                         s, sdata->op, sdata->score, s+k+1);
+                         free(sdata);
+                         free(name);
+                         return NULL;
+                     }
+                 }
+                 else {
+                     sdata->op = 0;
+                     sdata->score = 0;
+                 }
+                 sdata->str = strdup(s); 
+                 (void)ci_ptr_vector_add(*params, sdata);
+                 ci_debug_printf(5, "{%s%c%d}", sdata->str,
+                                 (sdata->op <= SBC_EQ? '=': (sdata->op == SBC_GREATER ? '>' :'<')),
+                                 sdata->score
+                     );
+             }
+             s += len+1;
+        }
+    }
+    return name;
+}
+
 int cfg_profile(const char *directive, const char **argv, void *setdata)
 {
   int i,type=0;
   struct profile *prof;
   struct lookup_db *db;
+  ci_ptr_vector_t *cats;
+  char *db_name;
 
   if(!argv[0] || !argv[1] || !argv[2])
     return 0;
@@ -800,14 +911,22 @@ int cfg_profile(const char *directive, const char **argv, void *setdata)
   ci_debug_printf(2, "srv_url_check: Add dbs to profile %s: ", argv[0]);
 
   for(i=2; argv[i] != NULL; i++) {
-    db=search_lookup_db(argv[i]);
+    cats = NULL;
+    db_name = parse_argument(argv[i], &cats);
+    if (!db_name) {
+        ci_debug_printf(1, "srv_url_check: Configuration error or error allocation memory: %s ... %s\n", argv[0], argv[i]);
+        return 0;
+    }
+    db=search_lookup_db(db_name);
     if(!db) {
-      ci_debug_printf(1,"srv_url_check: WARNING the lookup db %s does not exists!\n", argv[i]);
+      ci_debug_printf(1,"srv_url_check: WARNING the lookup db %s does not exists!\n", db_name);
     }
     else {
-      ci_debug_printf(2,"%s ",argv[i]);
-      profile_add_db(prof, db, type);
+      ci_debug_printf(2,"%s ",db_name);
+      profile_add_db(prof, db, type, cats);
     }
+    free(db_name);
+    db_name = NULL;
   }
   ci_debug_printf(2,"\n");
   return 1;
@@ -865,7 +984,7 @@ void *sg_load_db(struct lookup_db *db, const char *path)
   return (db->db_data = (void *)sg_db);
 }
 
-int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info)
+int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   if (!sg_db) {
@@ -874,12 +993,12 @@ int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
   }
   ci_debug_printf(5, "sg_db: checking domain %s \n", http_info->site);
   if( sg_domain_exists(sg_db, http_info->site) ) {
-    match_info_append_db(match_info,  sg_db->domains_db_name);
+      match_info_append_db(match_info,  sg_db->domains_db_name, NULL);
     return 1;
   }
   ci_debug_printf(5, "sg_db: checking url %s \n", http_info->url);
   if (sg_url_exists(sg_db,http_info->url)) {
-    match_info_append_db(match_info, sg_db->urls_db_name);
+      match_info_append_db(match_info, sg_db->urls_db_name, NULL);
     match_info->match_length = strlen(http_info->url);
     return 1;
   }
@@ -978,8 +1097,83 @@ char *find_last(char *s,char *e,const char accept)
   return NULL;
 }
 
-int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info)
+typedef struct subcats_data cmp_data;
+static int cmp_fn(cmp_data *cmp, const struct subcats_data *cfg)
 {
+    cmp->op = 0;
+    if (cfg->str && cmp->str && strcmp(cmp->str, cfg->str) ==0) {
+        switch(cfg->op) {
+        case SBC_LESS:
+            if (cmp->score < cfg->score)
+                cmp->op = 1; /*matches*/
+            break;
+        case SBC_GREATER:
+            if (cmp->score > cfg->score)
+                cmp->op = 1; /*matches*/
+            break;
+        default:
+            cmp->op = 1;
+            break;
+        }
+        if (cfg->op > 0) {
+            ci_debug_printf(5, "Matches sub category: %s, requires score: %d%c%d %s matches\n", 
+                            cmp->str, cmp->score, cfg->op == SBC_LESS? '<' : '>', cfg->score, cmp->op? "" : "not");
+        } else {
+            ci_debug_printf(5, "Matches sub category: %s\n", cmp->str);
+        }
+        return cmp->op;
+    }
+    return 0;
+}
+
+static const char *check_sub_categories(const char *key, char **vals, ci_ptr_vector_t *subcats, char *str_cats, size_t str_cats_size)
+{
+    int i, len;
+    char buf[1024], *e;
+    cmp_data cmp;
+    if (!subcats)
+        return key;
+
+    /*if sub-categories defined but no vals returned, do not match */
+    if (!vals)
+        return NULL;
+    
+    for (i = 0; vals[i] != NULL; i++) {
+        if ((e = strchr(vals[i], ':')) != NULL) {
+            /*We found a value in the form "value:score".
+              Split score from string, to pass it for check with subcategories.
+            */
+            cmp.score = strtol(e+1, NULL, 10);
+            if (cmp.score <= 0) {
+                cmp.str = vals[i];
+                cmp.score = 0;
+            } else {
+                /* a valid score found */
+                len = e - vals[i];
+                strncpy(buf, vals[i], len);
+                buf[len] = '\0';
+                cmp.str = buf;
+            }
+        } else {
+            cmp.str = vals[i];
+            cmp.score = 0;
+        }
+
+        cmp.op = 0;
+        ci_ptr_vector_iterate(subcats, &cmp, (int (*)(void *, const void *))cmp_fn);
+        if (cmp.op != 0) {
+            strncpy(str_cats, cmp.str, str_cats_size);
+            str_cats[str_cats_size-1] = '\0';
+            return key;
+        }
+    }
+    
+    return NULL;
+}
+
+int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
+{
+  char str_subcats[1024];
   char **vals=NULL;
   const char *ret = NULL;
   char *s, *snext, *e, *end, store;
@@ -988,6 +1182,14 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
   switch(ldb->check) {
   case CHECK_HOST:
       ret = ci_lookup_table_search(lt_db, http_info->site, &vals);
+      if (ret) {
+          if (subcats)
+              ret = check_sub_categories(ret, vals, subcats, str_subcats, sizeof(str_subcats));
+          if (vals) {
+              ci_lookup_table_release_result(lt_db, (void **)vals);
+              vals = NULL;
+          }
+      }
       break;
   case CHECK_DOMAIN:
       s = http_info->site;
@@ -996,7 +1198,14 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 	  s++;
 	  ci_debug_printf(5, "Checking  domain %s ....\n", s);
 	  ret = ci_lookup_table_search(lt_db, s, &vals);
-	  ci_lookup_table_release_result(lt_db, (void **)vals);
+          if (ret) {
+              if (subcats)
+                  ret = check_sub_categories(ret, vals, subcats, str_subcats, sizeof(str_subcats));
+              if (vals) {
+                  ci_lookup_table_release_result(lt_db, (void **)vals);
+                  vals = NULL;
+              }
+          }
       } while (!ret && (s=strchr(s, '.')));
       break;
   case CHECK_FULL_URL:
@@ -1038,9 +1247,15 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
 	      ci_debug_printf(9,"Going to check url: %s\n", s);
 	      ret = ci_lookup_table_search(lt_db, s, &vals);
-	      ci_lookup_table_release_result(lt_db, (void **)vals);
-              if (ret)
+              if (ret) {
+                  if (subcats)
+                      ret = check_sub_categories(ret, vals, subcats, str_subcats, sizeof(str_subcats));
+                  if (vals) {
+                      ci_lookup_table_release_result(lt_db, (void **)vals);
+                      vals = NULL;
+                  }
                   match_info->match_length = strlen(s);
+              }
 
 	      *e = store; /*... and restore string to its previous state :-), 
 			    the http_info->url must not change */
@@ -1053,6 +1268,20 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       
 
       break;
+  case CHECK_SIMPLE_URL:
+      s = http_info->url;
+      ci_debug_printf(5, "Checking  URL %s ....\n", s);
+      ret = ci_lookup_table_search(lt_db, s, &vals);
+      if (ret) {
+          if (subcats)
+              ret = check_sub_categories(ret, vals, subcats, str_subcats, sizeof(str_subcats));
+          if (vals) {
+              ci_lookup_table_release_result(lt_db, (void **)vals);
+              vals = NULL;
+          }
+      }
+      break;
+
   case CHECK_SRV_IP:
       break;
   case CHECK_SRV_NET:
@@ -1061,11 +1290,9 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       /*nothing*/
       break;
   }
-  if(vals)
-    ci_lookup_table_release_result(lt_db, (void **)vals);
   
   if (ret) {
-      match_info_append_db(match_info, ldb->name);
+      match_info_append_db(match_info, ldb->name, (subcats!= NULL ? str_subcats : NULL));
       return 1;
   }
 
@@ -1096,6 +1323,8 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata)
     check = CHECK_URL;
   else if(strcmp(argv[1],"full_url")==0)
       check = CHECK_FULL_URL;
+  else if(strcmp(argv[1],"url_simple_check")==0)
+      check = CHECK_SIMPLE_URL;
   else if(strcmp(argv[1],"domain")==0)
     check = CHECK_DOMAIN;
   /* Not yet implemented
@@ -1129,9 +1358,9 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata)
 
 /**********************************************************************/
 /* Other */
-int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info)
+int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
 {
-  match_info_append_db(match_info, ldb->name);
+    match_info_append_db(match_info, ldb->name, NULL);
   return 1;
 }
 
@@ -1160,6 +1389,11 @@ int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const ch
 int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);  
-    return snprintf(buf, len, "%s", uc->match_info.action_db);
+    if (uc->match_info.action < 0)
+        return 0;
+    if (uc->match_info.last_subcat[0] != '\0')
+        return snprintf(buf, len, "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
+    else
+        return snprintf(buf, len, "%s", uc->match_info.action_db);
 }
 
