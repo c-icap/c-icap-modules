@@ -1,7 +1,7 @@
 #include "c-icap.h"
 #include "simple_api.h"
 #include "body.h"
-#include "srv_clamav.h"
+#include "virus_scan.h"
 #include "filetype.h"
 #include "acl.h"
 #include "access.h"
@@ -95,7 +95,7 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req)
 }
 
 
-/*Implemented in srv_clamav.c*/
+/*Implemented in virus_scan.c*/
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
 /*******/
@@ -138,12 +138,12 @@ int cfg_av_req_profile(const char *directive, const char **argv, void *setdata)
     
     prof=av_req_profile_get(argv[0]);
     if (!prof) {
-        ci_debug_printf(1, "srv_clamav: Error allocating profile %s\n", argv[0]);
+        ci_debug_printf(1, "virus_scan: Error allocating profile %s\n", argv[0]);
         return 0;
     }
 
     if(ap_req_profile_config_param(prof, argv[1], (argv+2))==0) {
-        ci_debug_printf(1, "srv_clamav: Unknown configuration parameter for clamav profiles %s\n", argv[1]);
+        ci_debug_printf(1, "virus_scan: Unknown configuration parameter for clamav profiles %s\n", argv[1]);
         return 0;
     }
     return 1;

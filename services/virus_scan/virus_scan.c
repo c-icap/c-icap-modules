@@ -23,7 +23,7 @@
 #include "simple_api.h"
 #include "debug.h"
 #include "cfg_param.h"
-#include "srv_clamav.h"
+#include "virus_scan.h"
 #include "filetype.h"
 #include "ci_threads.h"
 #include "mem.h"
@@ -50,7 +50,7 @@ char *CLAMD_SOCKET_PATH = "/var/run/clamav/clamd.ctl";
 #endif
 
 void generate_error_page(av_req_data_t * data, ci_request_t * req);
-char *srvclamav_compute_name(ci_request_t * req);
+char *virus_scan_compute_name(ci_request_t * req);
 /***********************************************************************************/
 /* Module definitions                                                              */
 
@@ -77,51 +77,51 @@ static int AV_VIRUSES_FOUND = -1;
 
 /*********************/
 /* Formating table   */
-static int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, const char *param);
-static int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, const char *param);
-static int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_virus_scan_virusname(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_virus_scan_clamversion(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_virus_scan_http_url(ci_request_t *req, char *buf, int len, const char *param);
 #ifdef VIRALATOR_MODE
-int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, const char *param);
-int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, const char *param);
-int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, const char *param);
-int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, const char *param);
-int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_virus_scan_expect_size(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_virus_scan_httpurl(ci_request_t *req, char *buf, int len, const char *param);
+int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *param);
 #endif
-struct ci_fmt_entry srv_clamav_format_table [] = {
-    {"%VVN", "Virus name", fmt_srv_clamav_virusname},
-    {"%VVV", "Clamav Antivirus name", fmt_srv_clamav_clamversion},
-    {"%VU", "The HTTP url", fmt_srv_clamav_http_url},
+struct ci_fmt_entry virus_scan_format_table [] = {
+    {"%VVN", "Virus name", fmt_virus_scan_virusname},
+    {"%VVV", "Clamav Antivirus name", fmt_virus_scan_clamversion},
+    {"%VU", "The HTTP url", fmt_virus_scan_http_url},
 #ifdef VIRALATOR_MODE
-    {"%VFR", "downloaded file requested name", fmt_srv_clamav_filename_requested},
-    {"%VFS", "Expected http body data size (Content-Length header)", fmt_srv_clamav_expect_size},
-    {"%VF", "local filename", fmt_srv_clamav_filename},
-    {"%VHS", "HTTP URL", fmt_srv_clamav_httpurl},
-    {"%VPR", "Profile name", fmt_srv_clamav_profile},
+    {"%VFR", "downloaded file requested name", fmt_virus_scan_filename_requested},
+    {"%VFS", "Expected http body data size (Content-Length header)", fmt_virus_scan_expect_size},
+    {"%VF", "local filename", fmt_virus_scan_filename},
+    {"%VHS", "HTTP URL", fmt_virus_scan_httpurl},
+    {"%VPR", "Profile name", fmt_virus_scan_profile},
 #endif
     { NULL, NULL, NULL}
 };
 
 
-/*srv_clamav service extra data ... */
-static ci_service_xdata_t *srv_clamav_xdata = NULL;
+/*virus_scan service extra data ... */
+static ci_service_xdata_t *virus_scan_xdata = NULL;
 
 static int AVREQDATA_POOL = -1;
 
-static int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
+static int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
-static int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
+static int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
-static void srvclamav_close_service();
-static int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
+static void virus_scan_close_service();
+static int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t *);
-static int srvclamav_end_of_data_handler(ci_request_t *);
-static void *srvclamav_init_request_data(ci_request_t * req);
-static void srvclamav_release_request_data(void *data);
-static int srvclamav_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
+static int virus_scan_end_of_data_handler(ci_request_t *);
+static void *virus_scan_init_request_data(ci_request_t * req);
+static void virus_scan_release_request_data(void *data);
+static int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ci_request_t * req);
 
 /*Arguments parse*/
-static void srvclamav_parse_args(av_req_data_t * data, char *args);
+static void virus_scan_parse_args(av_req_data_t * data, char *args);
 /*Configuration Functions*/
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
@@ -173,32 +173,32 @@ static struct ci_conf_entry conf_variables[] = {
 
 
 CI_DECLARE_MOD_DATA ci_service_module_t service = {
-     "srv_clamav",              /*Module name */
+     "virus_scan",              /*Module name */
      "Clamav/Antivirus service",        /*Module short description */
      ICAP_RESPMOD | ICAP_REQMOD,        /*Service type responce or request modification */
-     srvclamav_init_service,    /*init_service. */
-     srvclamav_post_init_service,   /*post_init_service. */
-     srvclamav_close_service,   /*close_service */
-     srvclamav_init_request_data,       /*init_request_data. */
-     srvclamav_release_request_data,    /*release request data */
-     srvclamav_check_preview_handler,
-     srvclamav_end_of_data_handler,
-     srvclamav_io,
+     virus_scan_init_service,    /*init_service. */
+     virus_scan_post_init_service,   /*post_init_service. */
+     virus_scan_close_service,   /*close_service */
+     virus_scan_init_request_data,       /*init_request_data. */
+     virus_scan_release_request_data,    /*release request data */
+     virus_scan_check_preview_handler,
+     virus_scan_end_of_data_handler,
+     virus_scan_io,
      conf_variables,
      NULL
 };
 
 
 
-int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
+int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
      magic_db = server_conf->MAGIC_DB;
      av_file_types_init(&SCAN_FILE_TYPES);
      av_req_profile_init_profiles();
 
-     ci_debug_printf(10, "Going to initialize srvclamav\n");
-     srv_clamav_xdata = srv_xdata;      /*Needed by db_reload command */
+     ci_debug_printf(10, "Going to initialize virus_scan\n");
+     virus_scan_xdata = srv_xdata;      /*Needed by db_reload command */
      ci_service_set_preview(srv_xdata, 1024);
      ci_service_enable_204(srv_xdata);
      ci_service_set_transfer_preview(srv_xdata, "*");
@@ -208,34 +208,36 @@ int srvclamav_init_service(ci_service_xdata_t * srv_xdata,
      AVREQDATA_POOL = ci_object_pool_register("av_req_data_t", sizeof(av_req_data_t));
 
      if(AVREQDATA_POOL < 0) {
-	 ci_debug_printf(1, " srvclamav_init_service: error registering object_pool av_req_data_t\n");
+	 ci_debug_printf(1, " virus_scan_init_service: error registering object_pool av_req_data_t\n");
 	 return CI_ERROR;
      }
 
      /*initialize statistic counters*/
-     AV_SCAN_REQS = ci_stat_entry_register("Requests scanned", STAT_INT64_T,  "Service srv_clamav");
-     AV_VIRMODE_REQS = ci_stat_entry_register("Virmode requests", STAT_INT64_T,  "Service srv_clamav");
-     AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T,  "Service srv_clamav");
-     AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T,  "Service srv_clamav");
+     AV_SCAN_REQS = ci_stat_entry_register("Requests scanned", STAT_INT64_T,  "Service virus_scan");
+     AV_VIRMODE_REQS = ci_stat_entry_register("Virmode requests", STAT_INT64_T,  "Service virus_scan");
+     AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T,  "Service virus_scan");
+     AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T,  "Service virus_scan");
 
      /*initialize service commands */
+     register_command("virus_scan:clamav_dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
+                      dbreload_command);
      register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                       dbreload_command);
 
      return CI_OK;
 }
 
-int srvclamav_post_init_service(ci_service_xdata_t * srv_xdata,
+int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
     if (!clamav_init())
         return CI_ERROR;
 
-    set_istag(srv_clamav_xdata);
+    set_istag(virus_scan_xdata);
     return CI_OK;
 }
 
-void srvclamav_close_service()
+void virus_scan_close_service()
 {
      av_file_types_destroy(&SCAN_FILE_TYPES);
      ci_object_pool_unregister(AVREQDATA_POOL);
@@ -246,7 +248,7 @@ void srvclamav_close_service()
      av_req_profile_release_profiles();
 }
 
-void *srvclamav_init_request_data(ci_request_t * req)
+void *virus_scan_init_request_data(ci_request_t * req)
 {
      int preview_size;
      av_req_data_t *data;
@@ -279,7 +281,7 @@ void *srvclamav_init_request_data(ci_request_t * req)
 
           if (req->args) {
                ci_debug_printf(5, "service arguments:%s\n", req->args);
-               srvclamav_parse_args(data, req->args);
+               virus_scan_parse_args(data, req->args);
           }
           if (data->args.enable204 && ci_allow204(req))
                data->allow204 = 1;
@@ -300,10 +302,10 @@ void *srvclamav_init_request_data(ci_request_t * req)
 }
 
 
-void srvclamav_release_request_data(void *data)
+void virus_scan_release_request_data(void *data)
 {
      if (data) {
-          ci_debug_printf(5, "Releasing srv_clamav data.....\n");
+          ci_debug_printf(5, "Releasing virus_scan data.....\n");
 #ifdef VIRALATOR_MODE
           if (((av_req_data_t *) data)->must_scanned == VIR_SCAN) {
                ci_simple_file_release(((av_req_data_t *) data)->body);
@@ -325,7 +327,7 @@ void srvclamav_release_request_data(void *data)
 }
 
 
-int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
+int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t * req)
 {
      char buf[256];
@@ -408,7 +410,7 @@ int srvclamav_check_preview_handler(char *preview_data, int preview_data_len,
 
 
 
-int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
+int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 {
      /*We can put here scanning hor jscripts and html and raw data ...... */
      int allow_transfer;
@@ -458,7 +460,7 @@ int srvclamav_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 
 
 
-int srvclamav_write_to_net(char *buf, int len, ci_request_t * req)
+int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
 {
      int bytes;
      av_req_data_t *data = ci_service_data(req);
@@ -487,29 +489,29 @@ int srvclamav_write_to_net(char *buf, int len, ci_request_t * req)
      return bytes;
 }
 
-int srvclamav_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
+int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ci_request_t * req)
 {
      int ret = CI_OK;
      if (rbuf && rlen) {
-          *rlen = srvclamav_read_from_net(rbuf, *rlen, iseof, req);
+          *rlen = virus_scan_read_from_net(rbuf, *rlen, iseof, req);
 	  if (*rlen == CI_ERROR)
 	       return CI_ERROR;
           else if (*rlen < 0)
 	       ret = CI_OK;
      }
      else if (iseof) {
-	 if (srvclamav_read_from_net(NULL, 0, iseof, req) == CI_ERROR)
+	 if (virus_scan_read_from_net(NULL, 0, iseof, req) == CI_ERROR)
 	     return CI_ERROR;
      }
 
      if (wbuf && wlen) {
-          *wlen = srvclamav_write_to_net(wbuf, *wlen, req);
+          *wlen = virus_scan_write_to_net(wbuf, *wlen, req);
      }
      return CI_OK;
 }
 
-int srvclamav_end_of_data_handler(ci_request_t * req)
+int virus_scan_end_of_data_handler(ci_request_t * req)
 {
      av_req_data_t *data = ci_service_data(req);
      ci_simple_file_t *body;
@@ -541,7 +543,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
      if (data->virus_name) { /*A virus found*/
-         ci_request_set_str_attribute(req,"srv_clamav:virus", data->virus_name);
+         ci_request_set_str_attribute(req,"virus_scan:virus", data->virus_name);
          ci_stat_uint64_inc(AV_VIRUSES_FOUND, 1);
 	  http_client_ip = ci_headers_value(req->request_header, "X-Client-IP");
           ci_debug_printf(1, "VIRUS DETECTED: %s , http client ip: %s, http user: %s, http url: %s \n ",
@@ -565,22 +567,22 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
               }
 #endif /*VIRELATOR_MODE*/
                generate_error_page(data, req);
-               ci_request_set_str_attribute(req,"srv_clamav:action", "blocked");
+               ci_request_set_str_attribute(req,"virus_scan:action", "blocked");
           }
 #ifdef VIRALATOR_MODE
           else if (data->must_scanned == VIR_SCAN) {
                endof_data_vir_mode(data, req);
-               ci_request_set_str_attribute(req,"srv_clamav:action", "blocked");
+               ci_request_set_str_attribute(req,"virus_scan:action", "blocked");
           }
 #endif /*VIRELATOR_MODE*/
           else {
                ci_debug_printf(5, "Simply no other data sent\n");
-               ci_request_set_str_attribute(req,"srv_clamav:action", "partiallyblocked");
+               ci_request_set_str_attribute(req,"virus_scan:action", "partiallyblocked");
           }
           return CI_MOD_DONE;
      }
 
-     ci_request_set_str_attribute(req,"srv_clamav:action", "passed");
+     ci_request_set_str_attribute(req,"virus_scan:action", "passed");
 #ifdef VIRALATOR_MODE
      if (data->must_scanned == VIR_SCAN) {
           endof_data_vir_mode(data, req);
@@ -588,7 +590,7 @@ int srvclamav_end_of_data_handler(ci_request_t * req)
      else 
 #endif /* VIRELATOR_MODE */
          if (data->allow204 && !ci_req_sent_data(req)) {
-             ci_debug_printf(6, "srvClamAv module: Respond with allow 204\n");
+             ci_debug_printf(6, "virus_scan module: Respond with allow 204\n");
              return CI_MOD_ALLOW204;
          }
      ci_req_unlock_data(req);
@@ -613,7 +615,7 @@ void set_istag(ci_service_xdata_t * srv_xdata)
 
      clamav_get_versions(&level, &version, str_version, sizeof(str_version));
      /*cfg_version maybe must set by user when he is changing 
-        the srv_clamav configuration.... */
+        the virus_scan configuration.... */
      snprintf(istag, SERVICE_ISTAG_SIZE, "-%.3d-%s-%u%u",
               cfg_version, str_version, level, version);
      istag[SERVICE_ISTAG_SIZE] = '\0';
@@ -735,8 +737,8 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
      ci_http_response_add_header(req, "Connection: close");
      ci_http_response_add_header(req, "Content-Type: text/html");
 
-     error_page = ci_txt_template_build_content(req, "srv_clamav", "VIRUS_FOUND",
-                           srv_clamav_format_table);
+     error_page = ci_txt_template_build_content(req, "virus_scan", "VIRUS_FOUND",
+                           virus_scan_format_table);
 
      lang = ci_membuf_attr_get(error_page, "lang");
      if (lang) {
@@ -777,7 +779,7 @@ void av_file_types_destroy( struct av_file_types *ftypes)
 /* Parse arguments function - 
    Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed          
 */
-void srvclamav_parse_args(av_req_data_t * data, char *args)
+void virus_scan_parse_args(av_req_data_t * data, char *args)
 {
      char *str;
      if ((str = strstr(args, "allow204="))) {
@@ -813,8 +815,8 @@ void dbreload_command(const char *name, int type, const char **argv)
      ci_debug_printf(1, "Clamav virus database reload command received\n");
      if (!clamav_reload_virusdb())
           ci_debug_printf(1, "Clamav virus database reload command failed!\n");
-     if (srv_clamav_xdata)
-          set_istag(srv_clamav_xdata);
+     if (virus_scan_xdata)
+          set_istag(virus_scan_xdata);
 }
 
 /****************************************************************************************/
@@ -906,9 +908,9 @@ int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata)
 
 
 /**************************************************************/
-/* srv_clamav templates  formating table                      */
+/* virus_scan templates  formating table                      */
 
-int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_virusname(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (! data->virus_name)
@@ -917,18 +919,18 @@ int fmt_srv_clamav_virusname(ci_request_t *req, char *buf, int len, const char *
     return snprintf(buf, len, "%s", data->virus_name);
 }
 
-int fmt_srv_clamav_clamversion(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_clamversion(ci_request_t *req, char *buf, int len, const char *param)
 {
     return snprintf(buf, len, "%s", CLAMAV_VERSION);
 }
 
-int fmt_srv_clamav_http_url(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     return snprintf(buf, len, "%s", data->url_log);
 }
 
-int fmt_srv_clamav_profile(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (data->profile)

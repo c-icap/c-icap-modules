@@ -30,16 +30,16 @@
 #include <clamav.h>
 #include <time.h>
 #include <errno.h>
-#include "srv_clamav.h"
+#include "virus_scan.h"
 #include "../../common.h"
 #include <assert.h>
 
 extern char *VIR_SAVE_DIR;
 extern char *VIR_HTTP_SERVER;
 extern int VIR_UPDATE_TIME;
-extern struct ci_fmt_entry srv_clamav_format_table [];
+extern struct ci_fmt_entry virus_scan_format_table [];
 
-char *srvclamav_compute_name(ci_request_t * req);
+char *virus_scan_compute_name(ci_request_t * req);
 /*char *construct_url(char *strformat, char *filename, char *user);*/
 
 
@@ -50,7 +50,7 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
      const char *lang;
      ci_http_response_reset_headers(req);
      ci_http_response_add_header(req, "HTTP/1.1 200 OK");
-     ci_http_response_add_header(req, "Server: C-ICAP/srvclamav");
+     ci_http_response_add_header(req, "Server: C-ICAP/virus_scan");
      ci_http_response_add_header(req, "Connection: close");
      ci_http_response_add_header(req, "Content-Type: text/html");
 
@@ -59,7 +59,7 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
      data->vir_mode_state = VIR_ZERO;
 
 
-     if ((data->requested_filename = srvclamav_compute_name(req)) != NULL) {
+     if ((data->requested_filename = virus_scan_compute_name(req)) != NULL) {
           if (NULL ==
               (data->body =
                ci_simple_file_named_new(VIR_SAVE_DIR,
@@ -71,8 +71,8 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
      }
 
 
-     error_page = ci_txt_template_build_content(req, "srv_clamav", "VIR_MODE_HEAD",
-						srv_clamav_format_table);
+     error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_HEAD",
+						virus_scan_format_table);
 
      lang = ci_membuf_attr_get(error_page, "lang");
      if (lang) {
@@ -135,8 +135,8 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
                      (CAST_OFF_T) ci_simple_file_size(((av_req_data_t *) data)->body),
                      (CAST_OFF_T) ((av_req_data_t *) data)->expected_size);
      
-     error_page = ci_txt_template_build_content(req, "srv_clamav", "VIR_MODE_PROGRESS",
-						srv_clamav_format_table);
+     error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_PROGRESS",
+						virus_scan_format_table);
      if (!error_page) {
        ci_debug_printf(1, "Error createging Template file VIR_MODE_PROGRESS!. Stop processing...\n");
        return CI_EOF;
@@ -155,16 +155,16 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
      ci_membuf_t *error_page;
 
      if (data->virus_name && data->body) {
-	  error_page = ci_txt_template_build_content(req, "srv_clamav", 
+	  error_page = ci_txt_template_build_content(req, "virus_scan", 
 						     "VIR_MODE_VIRUS_FOUND",
-						     srv_clamav_format_table);
+						     virus_scan_format_table);
 	  data->error_page = error_page;
           data->vir_mode_state = VIR_TAIL;
 	  fchmod(data->body->fd, 0);
      }
      else if (data->body) {
-	  error_page = ci_txt_template_build_content(req, "srv_clamav", "VIR_MODE_TAIL",
-						     srv_clamav_format_table);
+	  error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_TAIL",
+						     virus_scan_format_table);
 	  data->error_page = error_page;
 	  data->vir_mode_state = VIR_TAIL;
           fchmod(data->body->fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
@@ -172,7 +172,7 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 }
 
 
-char *srvclamav_compute_name(ci_request_t * req)
+char *virus_scan_compute_name(ci_request_t * req)
 {
      char *abuf;
      const char *str, *filename, *last_delim;
@@ -275,7 +275,7 @@ char *construct_url(char *strformat, char *filename, char *user)
 }
 */
 
-int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
 
@@ -285,7 +285,7 @@ int fmt_srv_clamav_filename(ci_request_t *req, char *buf, int len, const char *p
     return snprintf(buf, len, "%s", data->body->filename);
 }
 
-int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
     if (! data->requested_filename)
@@ -294,7 +294,7 @@ int fmt_srv_clamav_filename_requested(ci_request_t *req, char *buf, int len, con
     return snprintf(buf, len, "%s", data->requested_filename);
 }
 
-int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, const char *param)
+int fmt_virus_scan_expect_size(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
 
@@ -304,11 +304,11 @@ int fmt_srv_clamav_expect_size(ci_request_t *req, char *buf, int len, const char
     return snprintf(buf, len, "%" PRINTF_OFF_T, (CAST_OFF_T)data->expected_size);
 }
 
-extern struct ci_fmt_entry srv_clamav_format_table [];
-int fmt_srv_clamav_httpurl(ci_request_t *req, char *buf, int len, const char *param)
+extern struct ci_fmt_entry virus_scan_format_table [];
+int fmt_virus_scan_httpurl(ci_request_t *req, char *buf, int len, const char *param)
 {
     char url[1024];
-    ci_format_text(req, VIR_HTTP_SERVER , url, 1024, srv_clamav_format_table);
+    ci_format_text(req, VIR_HTTP_SERVER , url, 1024, virus_scan_format_table);
     url[1023] = '\0';
     return snprintf(buf, len, "%s", url);
 }

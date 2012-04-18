@@ -17,7 +17,7 @@
  */
 
 
-#include "srv_clamav.h"
+#include "virus_scan.h"
 #include "ci_threads.h"
 #include "mem.h"
 #include "debug.h"

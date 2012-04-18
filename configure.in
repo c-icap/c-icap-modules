@@ -282,4 +282,4 @@ AC_CHECK_HEADERS(ctype.h)
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
 
-AC_OUTPUT([Makefile services/Makefile services/clamav/Makefile services/url_check/Makefile modules/Makefile])
+AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile modules/Makefile])
