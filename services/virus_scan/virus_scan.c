@@ -85,8 +85,11 @@ int fmt_virus_scan_expect_size(ci_request_t *req, char *buf, int len, const char
 int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *param);
 int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, const char *param);
 int fmt_virus_scan_httpurl(ci_request_t *req, char *buf, int len, const char *param);
+#endif
+#ifdef USE_VSCAN_PROFILES
 int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *param);
 #endif
+
 struct ci_fmt_entry virus_scan_format_table [] = {
     {"%VVN", "Virus name", fmt_virus_scan_virusname},
     {"%VVV", "Clamav Antivirus name", fmt_virus_scan_clamversion},
@@ -96,6 +99,8 @@ struct ci_fmt_entry virus_scan_format_table [] = {
     {"%VFS", "Expected http body data size (Content-Length header)", fmt_virus_scan_expect_size},
     {"%VF", "local filename", fmt_virus_scan_filename},
     {"%VHS", "HTTP URL", fmt_virus_scan_httpurl},
+#endif
+#ifdef USE_VSCAN_PROFILES
     {"%VPR", "Profile name", fmt_virus_scan_profile},
 #endif
     { NULL, NULL, NULL}
@@ -126,8 +131,10 @@ static void virus_scan_parse_args(av_req_data_t * data, char *args);
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
 static int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata);
+#ifdef USE_VSCAN_PROFILES
 int cfg_av_req_profile(const char *directive, const char **argv, void *setdata);
 int cfg_av_req_profile_access(const char *directive, const char **argv, void *setdata);
+#endif
 /*Commands functions*/
 static void dbreload_command(const char *name, int type, const char **argv);
 /*General functions*/
@@ -150,8 +157,10 @@ static struct ci_conf_entry conf_variables[] = {
      {"StartSendingDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"StartSendPercentDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
+#ifdef USE_VSCAN_PROFILES
      {"Profile", NULL, cfg_av_req_profile, NULL},
      {"ProfileAccess", NULL, cfg_av_req_profile_access, NULL},
+#endif
 #ifdef HAVE_FD_PASSING
      {"UseClamd", &USE_CLAMD, ci_cfg_onoff, NULL},
      {"ClamdSocket", &CLAMD_SOCKET_PATH, ci_cfg_set_str, NULL},
@@ -195,7 +204,9 @@ int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
 {
      magic_db = server_conf->MAGIC_DB;
      av_file_types_init(&SCAN_FILE_TYPES);
+#ifdef USE_VSCAN_PROFILES
      av_req_profile_init_profiles();
+#endif
 
      ci_debug_printf(10, "Going to initialize virus_scan\n");
      virus_scan_xdata = srv_xdata;      /*Needed by db_reload command */
@@ -245,7 +256,9 @@ void virus_scan_close_service()
      if (CLAMAV_TMP)
          free(CLAMAV_TMP);
 
+#ifdef USE_VSCAN_PROFILES
      av_req_profile_release_profiles();
+#endif
 }
 
 void *virus_scan_init_request_data(ci_request_t * req)
@@ -288,7 +301,9 @@ void *virus_scan_init_request_data(ci_request_t * req)
           else
                data->allow204 = 0;
           data->req = req;
+#ifdef USE_VSCAN_PROFILES
           data->profile = NULL;
+#endif
 
 #ifdef VIRALATOR_MODE
           data->last_update = 0;
@@ -330,9 +345,11 @@ void virus_scan_release_request_data(void *data)
 int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t * req)
 {
-     char buf[256];
      ci_off_t content_size = 0;
+#ifdef USE_VSCAN_PROFILES
      struct av_req_profile *prof = NULL;
+     char buf[256];
+#endif
      av_req_data_t *data = ci_service_data(req);
 
      ci_debug_printf(6, "OK; the preview data size is %d\n", preview_data_len);
@@ -342,6 +359,7 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
           return CI_MOD_ALLOW204;
      }
 
+#ifdef USE_VSCAN_PROFILES
      /*Select correct if any profile*/
      prof = av_req_profile_select(req);
      if (prof) {
@@ -359,6 +377,9 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
          ci_icap_add_xheader(req, buf);
      }
      else {
+#else
+    {
+#endif
          data->max_object_size = MAX_OBJECT_SIZE;
          data->send_percent_bytes = SEND_PERCENT_DATA;
          data->start_send_after = START_SEND_AFTER;
@@ -657,8 +678,10 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
      /*By default do not scan*/
      type = NO_SCAN;
 
+#ifdef USE_VSCAN_PROFILES
      if (data->profile && data->profile->disable_scan)
          return NO_SCAN;
+#endif
 
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
      file_type = get_filetype(req);
@@ -930,6 +953,7 @@ int fmt_virus_scan_http_url(ci_request_t *req, char *buf, int len, const char *p
     return snprintf(buf, len, "%s", data->url_log);
 }
 
+#ifdef USE_VSCAN_PROFILES
 int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
@@ -938,3 +962,4 @@ int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *pa
 
     return snprintf(buf, len, "-");
 }
+#endif

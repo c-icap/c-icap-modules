@@ -8,7 +8,11 @@ cicapmodule_LTLIBRARIES=virus_scan.la
 virus_scan_la_LIBADD = @MODULES_LIBADD@ @clamavlib@ -lclamav
 virus_scan_la_CFLAGS=  -I../../include/ @clamavinc@
 virus_scan_la_LDFLAGS=  -module -avoid-version
-virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c clamav_support.c profiles.c
+virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c clamav_support.c
+
+if USE_VSCAN_PROFILES
+  virus_scan_la_SOURCES += profiles.c
+endif
 
 TMPLS = templates/en/VIR_MODE_HEAD templates/en/VIR_MODE_PROGRESS templates/en/VIR_MODE_TAIL templates/en/VIR_MODE_VIRUS_FOUND templates/en/VIRUS_FOUND
 

@@ -21,6 +21,18 @@ dnl AC_CANONICAL_HOST
 
 CFLAGS="$CFLAGS -Wall"
 
+AC_ARG_ENABLE(virus_scan_profiles,
+[ --enable-virus_scan-profiles Enable support for configuration profiles in virus_scan service (experimental)],
+[ if test a"$enableval"=a"yes"; then
+       virus_scan_profiles_support="yes"
+       AC_DEFINE(USE_VSCAN_PROFILES, 1, [Define USE_VSCAN_PROFILES if configuration profiles for virus_scan service are enabled])
+  else
+       virus_scan_profiles_support="no"
+  fi
+],
+   [ virus_scan_profiles_support="no" ]
+)
+
 #check for c-icap
 AC_ARG_WITH(c-icap,
 [  --with-c-icap	Where to find c-icap ],
@@ -281,5 +293,17 @@ AC_CHECK_HEADERS(ctype.h)
 
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
+AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
 AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile modules/Makefile])
+
+if test a"$virus_scan_profiles_support" != a"no"; then
+echo -e "\n"\
+        "******************************************************************\n"\
+        "* WARNING! Using profiles in virus_scan service may open serious\n"\
+        "* security hole in your http cache systems.\n"\
+        "* Do not enable/use profiles in virus_scan service unless you are\n"\
+        "* sure what you are doing, and read the related documentation.\n"\
+        "*******************************************************************\n"
+fi
+

@@ -4,12 +4,15 @@
 #include "body.h"
 #include "request.h"
 #include "acl.h"
+#include "common.h"
 
 #define VIRALATOR_MODE
 
 #define LOG_URL_SIZE 256
 struct av_file_types;
+#ifdef USE_VSCAN_PROFILES
 struct av_req_profile;
+#endif
 
 typedef struct av_req_data{
      ci_simple_file_t *body;
@@ -20,7 +23,9 @@ typedef struct av_req_data{
      char *virus_name;
      ci_membuf_t *error_page;
      char url_log[LOG_URL_SIZE];
+#ifdef USE_VSCAN_PROFILES
     const struct av_req_profile *profile;
+#endif
 #ifdef VIRALATOR_MODE
      time_t last_update;
      char *requested_filename;
@@ -69,10 +74,12 @@ void endof_data_vir_mode(av_req_data_t *data,ci_request_t *req);
 int av_file_types_init( struct av_file_types *ftypes);
 void av_file_types_destroy( struct av_file_types *ftypes);
 
+#ifdef USE_VSCAN_PROFILES
 /*profiles related functions */
 void av_req_profile_init_profiles();
 void av_req_profile_release_profiles();
 struct av_req_profile *av_req_profile_select(ci_request_t *req);
+#endif
 
 /*Clamav support functions*/
 int clamav_init();
