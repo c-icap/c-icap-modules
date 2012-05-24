@@ -59,7 +59,7 @@ ci_thread_mutex_t db_mutex;
 
 int clamd_init();
 int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_version, size_t str_version_len);
-int clamd_scan(int fd, char **virus);
+int clamd_scan(int fd, av_virus_info_t *vinfo);
 
 int clamav_init()
 {
@@ -323,7 +323,7 @@ void clamav_destroy_virusdb()
      }
 }
 
-int clamav_scan(int fd, char **virus)
+int clamav_scan(int fd, av_virus_info_t *vinfo)
 {
     CL_ENGINE *vdb;
     const char *virname;
@@ -332,10 +332,11 @@ int clamav_scan(int fd, char **virus)
 
 #ifdef HAVE_FD_PASSING
     if (USE_CLAMD)
-        return clamd_scan(fd, virus); 
+        return clamd_scan(fd, vinfo); 
 #endif
 
-    *virus = NULL;
+    vinfo->virus_name = NULL;
+    vinfo->virus_found = 0;
      vdb = get_virusdb();
 #ifndef HAVE_LIBCLAMAV_095
      ret =
@@ -349,13 +350,14 @@ int clamav_scan(int fd, char **virus)
 
      status = 1;
      if (ret == CL_VIRUS) {
-         *virus = ci_buffer_alloc(strlen(virname)+1);
-         if (!*virus) {
+         vinfo->virus_name = ci_buffer_alloc(strlen(virname)+1);
+         if (!vinfo->virus_name) {
              ci_debug_printf(1, "clamav_scan: Error allocating buffer to write virus name %s!\n", virname);
              status = 0;
          }
          else
-             strcpy(*virus, virname);
+             strcpy(vinfo->virus_name, virname);
+         vinfo->virus_found = 1;
      }
      else if (ret != CL_CLEAN) {
          ci_debug_printf(1,
@@ -606,12 +608,13 @@ int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_ver
     return 1;
 }
 
-int clamd_scan(int fd, char **virus)
+int clamd_scan(int fd, av_virus_info_t *vinfo)
 {
     char resp[1024], *s, *f, *v;
     int sockfd, ret;
 
-    *virus = NULL;
+    vinfo->virus_name = NULL;
+    vinfo->virus_found = 0;
 
     sockfd = clamd_connect();
     if (sockfd < 0)
@@ -631,14 +634,15 @@ int clamd_scan(int fd, char **virus)
 
     if ((f = strstr(s, "FOUND"))) {
         /* A virus found */
+        vinfo->virus_found = 1;
        #define VIRUS_NAME_SIZE 128
-        *virus =  ci_buffer_alloc(VIRUS_NAME_SIZE);
-        if (! *virus) {
+        vinfo->virus_name =  ci_buffer_alloc(VIRUS_NAME_SIZE);
+        if (!vinfo->virus_name) {
             ci_debug_printf(1, "clamd_scan: Error allocating buffer to write virus name %s!\n", s);
             close(sockfd);
             return 0;
         }
-        for ( v = *virus; s != f && (v - *virus)< VIRUS_NAME_SIZE; v++, s++)
+        for ( v = vinfo->virus_name; s != f && (v - vinfo->virus_name)< VIRUS_NAME_SIZE; v++, s++)
             *v = *s;
         /*There is a space before "FOUND" and maybe v points after the end of string*/
         *(v - 1) = '\0';

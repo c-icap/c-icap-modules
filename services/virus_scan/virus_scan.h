@@ -14,13 +14,18 @@ struct av_file_types;
 struct av_req_profile;
 #endif
 
+typedef struct av_virus_info {
+    char *virus_name;
+    int virus_found;
+} av_virus_info_t;
+
 typedef struct av_req_data{
      ci_simple_file_t *body;
      ci_request_t *req;
      int must_scanned ;
      int allow204;
      int virus_check_done;
-     char *virus_name;
+     av_virus_info_t virus_info;
      ci_membuf_t *error_page;
      char url_log[LOG_URL_SIZE];
 #ifdef USE_VSCAN_PROFILES
@@ -83,7 +88,7 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req);
 
 /*Clamav support functions*/
 int clamav_init();
-int clamav_scan(int fd, char **virus);
+int clamav_scan(int fd,  av_virus_info_t *vinfo);
 int clamav_get_versions(unsigned int *level, unsigned int *version, char *str, size_t len);
 int clamav_init_virusdb();
 int clamav_reload_virusdb();

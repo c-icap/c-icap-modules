@@ -281,7 +281,8 @@ void *virus_scan_init_request_data(ci_request_t * req)
           }
           data->body = NULL;
           data->error_page = NULL;
-          data->virus_name = NULL;
+          data->virus_info.virus_name = NULL;
+          data->virus_info.virus_found = 0;
           data->must_scanned = SCAN;
           data->virus_check_done = 0;
           if (ALLOW204)
@@ -335,8 +336,8 @@ void virus_scan_release_request_data(void *data)
           if (((av_req_data_t *) data)->error_page)
                ci_membuf_free(((av_req_data_t *) data)->error_page);
 
-          if (((av_req_data_t *) data)->virus_name)
-               ci_buffer_free(((av_req_data_t *) data)->virus_name);
+          if (((av_req_data_t *) data)->virus_info.virus_name)
+               ci_buffer_free(((av_req_data_t *) data)->virus_info.virus_name);
           ci_object_pool_free(data);
      }
 }
@@ -494,7 +495,7 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
      }
 #endif
 
-     if (data->virus_name != NULL && data->error_page == 0) {
+     if (data->virus_info.virus_found && data->error_page == 0) {
           /*Inform user. Q:How? Maybe with a mail...... */
           return CI_EOF;        /* Do not send more data if a virus found and data has sent (readpos!=0) */
      }
@@ -555,7 +556,7 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
      
      lseek(body->fd, 0, SEEK_SET);
      /*TODO Must check for errors*/
-     clamav_scan(body->fd, &data->virus_name);
+     clamav_scan(body->fd, &data->virus_info);
      ci_stat_uint64_inc(AV_SCAN_REQS, 1);
      ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
      ci_debug_printf(6,
@@ -563,12 +564,12 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
                      PRINTF_OFF_T "...\n", 
 		     scanned_data, (CAST_OFF_T) body->endpos);
 
-     if (data->virus_name) { /*A virus found*/
-         ci_request_set_str_attribute(req,"virus_scan:virus", data->virus_name);
+     if (data->virus_info.virus_found) {
+         ci_request_set_str_attribute(req,"virus_scan:virus", data->virus_info.virus_name);
          ci_stat_uint64_inc(AV_VIRUSES_FOUND, 1);
 	  http_client_ip = ci_headers_value(req->request_header, "X-Client-IP");
           ci_debug_printf(1, "VIRUS DETECTED: %s , http client ip: %s, http user: %s, http url: %s \n ",
-                          data->virus_name,
+                          data->virus_info.virus_name,
 			  (http_client_ip != NULL? http_client_ip : "-"),
 			  (req->user[0] != '\0'? req->user: "-"),
 			  data->url_log
@@ -747,7 +748,7 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
      const char *lang;
 
      snprintf(buf, sizeof(buf), "X-Infection-Found: Type=0; Resolution=2; Threat=%s;",
-              data->virus_name);
+              data->virus_info.virus_name);
      buf[sizeof(buf)-1] = '\0';
      ci_icap_add_xheader(req, buf);
 
@@ -936,10 +937,10 @@ int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata)
 int fmt_virus_scan_virusname(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
-    if (! data->virus_name)
+    if (! data->virus_info.virus_name)
         return 0;
 
-    return snprintf(buf, len, "%s", data->virus_name);
+    return snprintf(buf, len, "%s", data->virus_info.virus_name);
 }
 
 int fmt_virus_scan_clamversion(ci_request_t *req, char *buf, int len, const char *param)

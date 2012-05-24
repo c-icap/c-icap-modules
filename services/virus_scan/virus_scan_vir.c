@@ -154,7 +154,7 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 {
      ci_membuf_t *error_page;
 
-     if (data->virus_name && data->body) {
+     if (data->virus_info.virus_found && data->body) {
 	  error_page = ci_txt_template_build_content(req, "virus_scan", 
 						     "VIR_MODE_VIRUS_FOUND",
 						     virus_scan_format_table);
