@@ -27,7 +27,6 @@
 #include "cfg_param.h"
 #include "txtTemplate.h"
 
-#include <clamav.h>
 #include <time.h>
 #include <errno.h>
 #include "virus_scan.h"
