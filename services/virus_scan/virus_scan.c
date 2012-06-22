@@ -674,16 +674,21 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
      int type, i;
      int *file_groups;
      int file_type;
+     const struct av_file_types *configured_file_types = NULL;
      av_req_data_t * data  = ci_service_data(req);;
 
      /*By default do not scan*/
      type = NO_SCAN;
 
 #ifdef USE_VSCAN_PROFILES
-     if (data->profile && data->profile->disable_scan)
-         return NO_SCAN;
+     if (data->profile) {
+         if (data->profile->disable_scan)
+             return NO_SCAN;
+         configured_file_types = &data->profile->scan_file_types;
+     }
+     else 
 #endif
-
+         configured_file_types = &SCAN_FILE_TYPES;
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
      file_type = get_filetype(req);
      
@@ -702,15 +707,18 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
          file_groups = ci_data_type_groups(magic_db, file_type);
          i = 0;
          if (file_groups) {
-             while (file_groups[i] >= 0 && i < MAX_GROUPS) {
-                 if ((type = SCAN_FILE_TYPES.scangroups[file_groups[i]]) > 0)
+             while ( i < MAX_GROUPS && file_groups[i] >= 0) {
+                 assert(file_groups[i] < ci_magic_groups_num(magic_db));
+                 if ((type = configured_file_types->scangroups[file_groups[i]]) > 0)
                      break;
                  i++;
              }
          }
 
-         if (type == NO_SCAN)
-             type = SCAN_FILE_TYPES.scantypes[file_type];
+         if (type == NO_SCAN) {
+             assert(file_type < ci_magic_types_num(magic_db));
+             type = configured_file_types->scantypes[file_type];
+         }
      }
 
      if (type == NO_SCAN && data->args.forcescan)
