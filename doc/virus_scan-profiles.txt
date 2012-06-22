@@ -1,0 +1,100 @@
+WARNING
+=======
+
+WARNING! Using profiles in virus_scan service may open serious
+security hole in your http cache systems. Wrong configuration
+can allow viruses stored in your web cache.
+Do not enable/use profiles in virus_scan service unless you are
+sure what you are doing. Please refer to "Problems/Bugs" paragraph.
+
+
+Enable profiles for virus_scan service
+======================================
+
+Use the --enable-virus_scan-profiles option in configure script to enable
+and use configuration profiles in virus_scan service:
+ ./configure --with-c-icap=/usr/local/c-icap/ --prefix=/usr/local/c-icap/ --enable-virus_scan-profiles
+
+
+c-icap.conf configuration
+=========================
+
+The configuration parameters to configure and use profiles for virus_scan 
+service are the followings:
+
+TAG: virus_scan.Profile
+Format: virus_scan.Profile profile_name param val1 [val2 ...]
+Description:
+	Supported param values are:
+		DisableVirusScan Disable viruses scanning for icap requests
+			matching the given profile.
+		SendPercentData Overwrite the default virus_scan.SendPercentData
+			value for icap requests matching the given profile
+		ScanFileTypes Overwrite the default virus_scan.ScanFileTypes
+			list for icap requests matching the given profile
+		VirScanFileTypes For which file types the virelator mode should
+			used for icap requests matching the given profile
+		MaxObjectSize Overwrite the virus_scan.MaxObjectSize value for
+			requests matching given profile. If this value is
+			greater than the virus_scan.MaxObjectSize value then
+			the virus_scan.MaxObjectSize value used.
+		StartSendingDataAfter Overwrite the virus_scan.StartSendingDataAfter
+			value for requests matching given profile.
+
+TAG: virus_scan.ProfileAccess
+Format: virus_scan.ProfileAccess profile_name acl1 [acl2 ...]
+Description:
+	Used to select profile based on acls
+
+Example configuration
+=====================
+
+Scenario: 
+ 1) We do not want to scan objects comming from microsoft 
+ 2) We do not want to use virelator mode for objects smaller than 5Mb
+
+Here is a sample configuration file
+
+#Default values configuration:
+virus_scan.ScanFileTypes HTML TEXT EXECUTABLE GIF JPEG MSOFFICE PDF SWF ARCHIVE
+virus_scan.SendPercentData 5
+virus_scan.StartSendPercentDataAfter 2M
+virus_scan.MaxObjectSize  5M
+virus_scan.VirScanFileTypes EXECUTABLE ARCHIVE
+
+# Defining NoScan profile
+virus_scan.Profile NoScan DisableVirusScan
+# Defining NoVir profile
+# Use the default SendPercentData, StartSendPercentDataAfter and MaxObjectSize
+# Do not define the VirScanFileTypes variable for the given profile
+virus_scan.Profile NoVir ScanFileTypes HTML TEXT EXECUTABLE GIF JPEG MSOFFICE PDF SWF ARCHIVE
+
+# Select the correct profile using acls
+acl MICROSOFT http_req_header{Host} /\.microsoft.com/
+acl BigObjects http_resp_header{Content-Length} /^([5-9]|[0-9][0-9]+)[0-9]{6}$/
+virus_scan.ProfileAccess NoScan MICROSOFT
+virus_scan.ProfileAccess NoVir !BigObjects
+
+Problems/Bugs
+=============
+
+Assume the following scenario
+ - squid is configured to use c-icap virus_scan service
+ - the system administrator has setup two profiles, NoScan and FullScan
+ - Some of the users belongs to group NoScanGroup configured to use NoScan
+   profile, and some other users belongs to FullScanGroup configured to use
+   the FullScan profile
+ - A user from group NoScanGroup download an infected object. The object stored
+   in squid cache.
+ - A user from group FullScanGroup access the same object. The object served
+   from cache and does not send to the icap server for scanning.
+
+The above scenario whould work without any problem if the web-cache/proxy sends
+the data for scanning after the data cached or in other words implements the
+"after cache ICAP vectoring point". Unfortunately squid3 implements only the
+pre-cache ICAP vectoring point, which means that it sends object to the
+ICAP server before cached.
+
+The system administrator who want to use profiles MUST use only server-side
+acls (eg destination domain) to select the profile and never use profiles
+based on client.
