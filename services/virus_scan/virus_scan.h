@@ -46,6 +46,7 @@ typedef struct av_req_data{
      ci_off_t max_object_size;
      int send_percent_bytes;
      ci_off_t start_send_after;
+     int encoded;
 }av_req_data_t;
 
 struct av_file_types {
@@ -94,5 +95,7 @@ int clamav_init_virusdb();
 int clamav_reload_virusdb();
 void clamav_destroy_virusdb();
 
-
+/*Decoding functions*/
+int virus_scan_inflate(int fin, int fout, ci_off_t max_size);
+const char *virus_scan_inflate_error(int err);
 #endif

@@ -5,10 +5,10 @@ cicapdatadir=@DATADIR@
 cicapmoduledir=@MODSDIR@
 cicapmodule_LTLIBRARIES=virus_scan.la
 
-virus_scan_la_LIBADD = @MODULES_LIBADD@ @clamavlib@ -lclamav
-virus_scan_la_CFLAGS=  -I../../include/ @clamavinc@
+virus_scan_la_LIBADD = @MODULES_LIBADD@ @ZLIB_ADD_LDFLAG@ @clamavlib@ -lclamav
+virus_scan_la_CFLAGS=  -I../../include/ @clamavinc@ @ZLIB_ADD_FLAG@
 virus_scan_la_LDFLAGS=  -module -avoid-version
-virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c clamav_support.c
+virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c clamav_support.c decode.c
 
 if USE_VSCAN_PROFILES
   virus_scan_la_SOURCES += profiles.c
