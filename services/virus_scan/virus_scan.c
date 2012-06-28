@@ -173,6 +173,7 @@ static struct ci_conf_entry conf_variables[] = {
      {"ClamAvTmpDir", NULL, cfg_ClamAvTmpDir, NULL},
 #ifdef VIRALATOR_MODE
      {"VirSaveDir", &VIR_SAVE_DIR, ci_cfg_set_str, NULL},
+     {"VirHTTPServer", &VIR_HTTP_SERVER, ci_cfg_set_str, NULL}, /*Deprecated*/
      {"VirHTTPUrl", &VIR_HTTP_SERVER, ci_cfg_set_str, NULL},
      {"VirUpdateTime", &VIR_UPDATE_TIME, ci_cfg_set_int, NULL},
      {"VirScanFileTypes", &SCAN_FILE_TYPES, cfg_ScanFileTypes, NULL},
