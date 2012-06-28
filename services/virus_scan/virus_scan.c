@@ -138,7 +138,7 @@ int cfg_av_req_profile_access(const char *directive, const char **argv, void *se
 /*Commands functions*/
 static void dbreload_command(const char *name, int type, const char **argv);
 /*General functions*/
-static int get_filetype(ci_request_t * req);
+static int get_filetype(ci_request_t * req, int *encoding);
 static void set_istag(ci_service_xdata_t * srv_xdata);
 
 /*It is dangerous to pass directly fields of the limits structure in conf_variables,
@@ -533,37 +533,23 @@ int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      return CI_OK;
 }
 
+int virus_scan(ci_request_t * req, av_req_data_t *data);
 int virus_scan_end_of_data_handler(ci_request_t * req)
 {
      av_req_data_t *data = ci_service_data(req);
      ci_simple_file_t *body;
      const char *http_client_ip;
-     unsigned long scanned_data = 0;
 
      if (!data || !data->body)
           return CI_MOD_DONE;
 
      body = data->body;
      data->virus_check_done = 1;
-     if (data->must_scanned == NO_SCAN) {       /*If exceeds the MAX_OBJECT_SIZE for example ......  */
-          ci_req_unlock_data(req);
-          ci_simple_file_unlock_all(body);      /*Unlock all data to continue send them . Not really needed here.... */
-          return CI_MOD_DONE;
-     }
-
-
      ci_debug_printf(6, "Scan from file\n");
-     
-     lseek(body->fd, 0, SEEK_SET);
-     /*TODO Must check for errors*/
-     clamav_scan(body->fd, &data->virus_info);
-     ci_stat_uint64_inc(AV_SCAN_REQS, 1);
-     ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
-     ci_debug_printf(6,
-                     "Clamav engine scanned %lu blocks of  data. Data size: %"
-                     PRINTF_OFF_T "...\n", 
-		     scanned_data, (CAST_OFF_T) body->endpos);
-
+     if (virus_scan(req, data) == CI_ERROR) {
+         ci_debug_printf(1, "Error while scanning for virus. Aborting....\n");
+         return CI_ERROR;
+     }
      if (data->virus_info.virus_found) {
          ci_request_set_str_attribute(req,"virus_scan:virus", data->virus_info.virus_name);
          ci_stat_uint64_inc(AV_VIRUSES_FOUND, 1);
@@ -623,7 +609,74 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
      return CI_MOD_DONE;
 }
 
+int virus_scan(ci_request_t * req, av_req_data_t *data)
+{
+    int fd_to_scan, ret;
+    ci_simple_file_t *body;
+#ifdef HAVE_ZLIB
+    char tmpfname[CI_FILENAME_LEN+1];
+    const char *err;
+    int unzippedfd = -1;
+#endif
 
+    if (data->must_scanned == NO_SCAN) {       /*If exceeds the MAX_OBJECT_SIZE for example ......  */
+        return CI_OK;
+    }
+
+    body = data->body;
+    ret = 1;
+
+    /*
+      Normally antiviruses can not handle deflate encoding, because there is not
+      any way to recognize them. So try to uncompress deflated files before pass them 
+      to the antivirus engine. 
+    */
+#ifdef HAVE_ZLIB
+    if (data->encoded == CI_ENCODE_DEFLATE) {
+        unzippedfd = ci_mktemp_file(CI_TMPDIR, "CI_TMP_XXXXXX", tmpfname);
+        if (!unzippedfd) {
+            ci_debug_printf(1, "Enable to create temporary file to decode deflated file!\n");
+            return CI_ERROR;
+        }
+        ci_debug_printf(6, "Scan from unzipped file %s\n", tmpfname);
+        lseek(body->fd, 0, SEEK_SET);
+        ret = virus_scan_inflate(body->fd, unzippedfd, MAX_OBJECT_SIZE);
+        fd_to_scan = unzippedfd;
+    }
+    else 
+#endif
+        fd_to_scan = body->fd;
+
+#ifdef HAVE_ZLIB
+    if (ret > 0) {
+#endif
+        lseek(fd_to_scan, 0, SEEK_SET);
+        /*TODO Must check for errors*/
+        clamav_scan(fd_to_scan, &data->virus_info);
+        ci_stat_uint64_inc(AV_SCAN_REQS, 1);
+        ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
+#ifdef HAVE_ZLIB
+    }
+    else if (ret == 0) /*Exceeds the maximum allowed size*/
+        data->must_scanned = NO_SCAN;
+    else if (ret < 0) {
+        /*Probably corrupted object. Handle it as virus*/
+        err = virus_scan_inflate_error(ret);
+        if (err) {
+            data->virus_info.virus_name = ci_buffer_alloc(strlen(err)+1);
+            if (data->virus_info.virus_name)
+                strcpy(data->virus_info.virus_name, err);
+        }
+        data->virus_info.virus_found = 1;
+    }
+
+    if (unzippedfd >= 0){
+        close(unzippedfd);
+        unlink(tmpfname);
+    }
+#endif
+    return CI_OK;
+}
 
 /*******************************************************************************/
 /* Other  functions                                                            */
@@ -648,21 +701,11 @@ void set_istag(ci_service_xdata_t * srv_xdata)
      CLAMAV_VERSION[CLAMAV_VERSION_SIZE-1] = '\0';
 }
 
-int get_filetype(ci_request_t * req)
+int get_filetype(ci_request_t * req, int *iscompressed)
 {
-     int iscompressed, filetype;
+      int filetype;
       /*Use the ci_magic_req_data_type which caches the result*/
-      filetype = ci_magic_req_data_type(req, &iscompressed);
-
-
-/*     if iscompressed we do not care becouse clamav can understand zipped objects*/
-
-/*     Yes but what about deflate compression as encoding ??????
-       I don't know, maybe we can modify web-client requests to not send
-       deflate method to Accept-Encoding header  :( .
-       Or decompress internally the file and pass to the 
-       clamav the decompressed data....
-*/
+      filetype = ci_magic_req_data_type(req, iscompressed);
      return filetype;
 }
 
@@ -690,8 +733,8 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 #endif
          configured_file_types = &SCAN_FILE_TYPES;
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
-     file_type = get_filetype(req);
-     
+     file_type = get_filetype(req, &data->encoded);
+
      if (preview_data_len == 0 || file_type < 0) {
 	 ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
 	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n", 
