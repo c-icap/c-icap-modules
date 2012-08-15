@@ -429,13 +429,13 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      if (!get_http_info(req, req_header, &uc->httpinf)) /*Unknown method or something else...*/
 	 return CI_MOD_ALLOW204;
 
-     ci_debug_printf(9, "URL  to host %s\n", uc->httpinf.site);
-     ci_debug_printf(9, "URL  page %s\n", uc->httpinf.url);
+     ci_debug_printf(9, "srv_url_check: URL  to host %s\n", uc->httpinf.site);
+     ci_debug_printf(9, "srv_url_check: URL  page %s\n", uc->httpinf.url);
 
      profile = profile_select(req);
 
      if (!profile) {
-          ci_debug_printf(1, "No Profile configured! Allowing the request...\n");
+          ci_debug_printf(1, "srv_url_check: No Profile configured! Allowing the request...\n");
 	  return CI_MOD_ALLOW204;
      }
      
@@ -444,7 +444,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      ci_icap_add_xheader(req, buf);
 
      if ((pass=profile_access(profile, &uc->httpinf, &uc->match_info)) == DB_ERROR) {
-          ci_debug_printf(1,"Error searching in profile! Allow the request\n");
+          ci_debug_printf(1,"srv_url_check: Error searching in profile! Allow the request\n");
 	  return CI_MOD_ALLOW204;
      }
      
@@ -470,10 +470,20 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
                  buf[sizeof(buf)-1] = '\0';
                  ci_request_set_str_attribute(req,"url_check:action_cat", buf);
                  snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, ACTION_STR(uc->match_info.action));
+                 ci_debug_printf(5, "srv_url_check: %s: %s{%s}, http url: %s\n",
+                        ACTION_STR(uc->match_info.action),
+                        uc->match_info.action_db,
+                        uc->match_info.last_subcat,
+                        uc->httpinf.url);
              }
              else {
                  ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
                  snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+                 snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+                 ci_debug_printf(5, "srv_url_check: %s: %s, http url: %s\n",
+                        ACTION_STR(uc->match_info.action),
+                        uc->match_info.action_db,
+                        uc->httpinf.url);
              }
              buf[sizeof(buf)-1] = '\0';
              ci_icap_add_xheader(req, buf);
@@ -489,7 +499,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
 
      if (pass == DB_BLOCK) {
           /*The URL is not a good one so.... */
-          ci_debug_printf(9, "Oh!!! we are going to deny this site.....\n");
+          ci_debug_printf(9, "srv_url_check: Oh!!! we are going to deny this site.....\n");
 
           uc->denied = 1;
           ci_http_response_create(req, 1, 1); /*Build the responce headers */
@@ -572,7 +582,7 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ret = CI_ERROR;
          }
          else {
-             ci_debug_printf(9, "Does not allow early responses, wait for eof before send data\n");
+             ci_debug_printf(9, "srv_url_check: Does not allow early responses, wait for eof before send data\n");
              *wlen = 0;
          }
      }
@@ -774,21 +784,21 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
   while (adb) {
     db=adb->db;
     if(!db) {
-      ci_debug_printf(1, "Empty access DB in profile %s! is this possible????\n",
+      ci_debug_printf(1, "srv_url_check: Empty access DB in profile %s! is this possible????\n",
 		      prof->name);
       return DB_ERROR;
     }
 
     if(!db->lookup_db) {
-      ci_debug_printf(1, "The db %s in profile %s has not an lookup_db method implemented!\n",
+      ci_debug_printf(1, "srv_url_check: The db %s in profile %s has not an lookup_db method implemented!\n",
 		      db->name,
 		      prof->name);
       return DB_ERROR;
     }
-    ci_debug_printf(5, "Going to check the db %s for %s request\n", db->name, ACTION_STR(adb->pass));
+    ci_debug_printf(5, "srv_url_check: Going to check the db %s for %s request\n", db->name, ACTION_STR(adb->pass));
 
     if (db->lookup_db(db, info, match_info, adb->subcats)) {
-	ci_debug_printf(5, "The db :%s matches! \n", db->name);
+	ci_debug_printf(5, "srv_url_check: The db :%s matches! \n", db->name);
         match_info->action = adb->pass;
         if(match_info->action != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
             strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
@@ -860,7 +870,7 @@ static char *parse_argument(const char *arg, ci_ptr_vector_t **params)
                      s[k] = '\0';
                      sdata->score = strtol(s+k+1, NULL, 10);
                      if (sdata->score <=0 ) {
-                         ci_debug_printf(5, "Parse error: cat: %s, op: %d, score: %d (in %s)\n", 
+                         ci_debug_printf(5, "srv_url_check: Parse error: cat: %s, op: %d, score: %d (in %s)\n", 
                                          s, sdata->op, sdata->score, s+k+1);
                          free(sdata);
                          free(name);
@@ -943,13 +953,13 @@ int cfg_profile_access(const char *directive, const char **argv, void *setdata)
     return 0;
 
    if (!(prof = profile_search(argv[0]))) {
-       ci_debug_printf(1, "Error: Unknown profile %s!", argv[0]);
+       ci_debug_printf(1, "srv_url_check: Error: Unknown profile %s!", argv[0]);
        return 0;
    }
     
    if ((access_entry = ci_access_entry_new(&(prof->access_list), 
 					   CI_ACCESS_ALLOW))  == NULL) {
-         ci_debug_printf(1, "Error creating access list for cfg profiles!\n");
+         ci_debug_printf(1, "srv_url_check: Error creating access list for cfg profiles!\n");
          return 0;
      }
    
@@ -958,7 +968,7 @@ int cfg_profile_access(const char *directive, const char **argv, void *setdata)
        acl_spec_name = argv[argc];
           /*TODO: check return type.....*/
           if (!ci_access_entry_add_acl_by_name(access_entry, acl_spec_name)) {
-	      ci_debug_printf(1,"Error adding acl spec: %s in profile %s."
+	      ci_debug_printf(1,"srv_url_check: Error adding acl spec: %s in profile %s."
 			        " Probably does not exist!\n", 
 			      acl_spec_name, prof->name);
               error = 1;
@@ -988,15 +998,15 @@ int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   if (!sg_db) {
-       ci_debug_printf(1, "sg_db %s is not open? \n", ldb->name);
+       ci_debug_printf(1, "srv_url_check: sg_db %s is not open? \n", ldb->name);
        return 0;
   }
-  ci_debug_printf(5, "sg_db: checking domain %s \n", http_info->site);
+  ci_debug_printf(5, "srv_url_check: sg_db: checking domain %s \n", http_info->site);
   if( sg_domain_exists(sg_db, http_info->site) ) {
       match_info_append_db(match_info,  sg_db->domains_db_name, NULL);
     return 1;
   }
-  ci_debug_printf(5, "sg_db: checking url %s \n", http_info->url);
+  ci_debug_printf(5, "srv_url_check: sg_db: checking url %s \n", http_info->url);
   if (sg_url_exists(sg_db,http_info->url)) {
       match_info_append_db(match_info, sg_db->urls_db_name, NULL);
     match_info->match_length = strlen(http_info->url);
@@ -1010,7 +1020,7 @@ void sg_release_db(struct lookup_db *ldb)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   if (!sg_db) {
-       ci_debug_printf(9, "sg_release_db: sg_db is not open? \n");
+       ci_debug_printf(9, "srv_url_check: sg_release_db: sg_db is not open? \n");
        return;
   }
   sg_close_db(sg_db);
@@ -1042,7 +1052,7 @@ int cfg_load_sg_db(const char *directive, const char **argv, void *setdata)
   struct command_sg_db_data *db_data;
 
   if (argv == NULL || argv[0] == NULL || argv[1] == NULL) {
-    ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
+    ci_debug_printf(1, "srv_url_check: Missing arguments in directive:%s\n", directive);
     return 0;
   }
 
@@ -1116,10 +1126,10 @@ static int cmp_fn(cmp_data *cmp, const struct subcats_data *cfg)
             break;
         }
         if (cfg->op > 0) {
-            ci_debug_printf(5, "Matches sub category: %s, requires score: %d%c%d %s matches\n", 
+            ci_debug_printf(5, "srv_url_check: Matches sub category: %s, requires score: %d%c%d %s matches\n", 
                             cmp->str, cmp->score, cfg->op == SBC_LESS? '<' : '>', cfg->score, cmp->op? "" : "not");
         } else {
-            ci_debug_printf(5, "Matches sub category: %s\n", cmp->str);
+            ci_debug_printf(5, "srv_url_check: Matches sub category: %s\n", cmp->str);
         }
         return cmp->op;
     }
@@ -1196,7 +1206,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       s--;   /* :-) */
       do {
 	  s++;
-	  ci_debug_printf(5, "Checking  domain %s ....\n", s);
+	  ci_debug_printf(5, "srv_url_check: Checking  domain %s ....\n", s);
 	  ret = ci_lookup_table_search(lt_db, s, &vals);
           if (ret) {
               if (subcats)
@@ -1245,7 +1255,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 	  do {
 	      store = *e;
 	      *e = '\0'; /*cut the string exactly here (the http_info->url must not change!) */
-	      ci_debug_printf(9,"Going to check url: %s\n", s);
+	      ci_debug_printf(9,"srv_url_check: Going to check url: %s\n", s);
 	      ret = ci_lookup_table_search(lt_db, s, &vals);
               if (ret) {
                   if (subcats)
@@ -1270,7 +1280,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
       break;
   case CHECK_SIMPLE_URL:
       s = http_info->url;
-      ci_debug_printf(5, "Checking  URL %s ....\n", s);
+      ci_debug_printf(5, "srv_url_check: Checking  URL %s ....\n", s);
       ret = ci_lookup_table_search(lt_db, s, &vals);
       if (ret) {
           if (subcats)
@@ -1302,7 +1312,7 @@ int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct matc
 void lt_release_db(struct lookup_db *ldb)
 {
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
-  ci_debug_printf(5, "Destroy lookup table %s\n", lt_db->path);
+  ci_debug_printf(5, "srv_url_check: Destroy lookup table %s\n", lt_db->path);
   ci_lookup_table_destroy(lt_db);
   ldb->db_data = NULL;
 }
@@ -1313,7 +1323,7 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata)
   struct lookup_db *ldb;
   unsigned int check;
   if (argv == NULL || argv[0] == NULL || argv[1] == NULL || argv[2] == NULL) {
-    ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
+    ci_debug_printf(1, "srv_url_check: Missing arguments in directive:%s\n", directive);
     return 0;
   }
 
@@ -1334,7 +1344,7 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata)
       check = CHECK_SRV_NET;
   */
   else {
-    ci_debug_printf(1, "Wrong argument %s for directive %s\n", 
+    ci_debug_printf(1, "srv_url_check: Wrong argument %s for directive %s\n", 
 		    argv[1], directive);
     return 0;
   }
