@@ -40,6 +40,7 @@ int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len);
 long int CLAMAV_MAXRECLEVEL = 5;
 long int CLAMAV_MAX_FILES = 0;
 ci_off_t CLAMAV_MAXFILESIZE = 100 * 1048576; /* maximal archived file size == 100 Mb */
+ci_off_t CLAMAV_MAXSCANSIZE = 200 * 1048576;
 char *CLAMAV_TMP = NULL;
 #define CLAMAV_VERSION_SIZE 64
 char CLAMAV_VERSION[CLAMAV_VERSION_SIZE];
@@ -170,6 +171,7 @@ static struct ci_conf_entry conf_variables[] = {
 /*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
      {"ClamAvMaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
       NULL},
+     {"ClamAvMaxScanSize", &CLAMAV_MAXSCANSIZE, ci_cfg_size_off, NULL},
      {"ClamAvTmpDir", NULL, cfg_ClamAvTmpDir, NULL},
 #ifdef VIRALATOR_MODE
      {"VirSaveDir", &VIR_SAVE_DIR, ci_cfg_set_str, NULL},

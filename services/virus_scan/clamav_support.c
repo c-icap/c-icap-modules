@@ -33,6 +33,7 @@
 extern long int CLAMAV_MAXRECLEVEL;
 extern long int CLAMAV_MAX_FILES;
 extern ci_off_t CLAMAV_MAXFILESIZE;
+extern ci_off_t CLAMAV_MAXSCANSIZE;
 extern char *CLAMAV_TMP;
 extern int USE_CLAMD;
 extern char *CLAMD_SOCKET_PATH;
@@ -96,6 +97,9 @@ int clamav_init()
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILESIZE, CLAMAV_MAXFILESIZE); 
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAXFILESIZE\n");
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_SCANSIZE, CLAMAV_MAXSCANSIZE); 
+     if(ret != CL_SUCCESS)
+	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAXSCANSIZE\n");
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_RECURSION, CLAMAV_MAXRECLEVEL); 
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_RECURSION\n");
