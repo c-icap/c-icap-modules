@@ -307,6 +307,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
           tmp = httpinf->host;
           for (tmp = httpinf->host; *str != '\0' && (tmp - httpinf->host) < CI_MAXHOSTNAMELEN; tmp++,str++)
                *tmp = tolower(*str); 
+          *tmp = '\0';
           httpinf->host[CI_MAXHOSTNAMELEN] = '\0';
      }
 
