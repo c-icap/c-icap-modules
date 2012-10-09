@@ -665,11 +665,11 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
     else if (ret < 0) {
         /*Probably corrupted object. Handle it as virus*/
         err = virus_scan_inflate_error(ret);
-        if (err) {
-            data->virus_info.virus_name = ci_buffer_alloc(strlen(err)+1);
-            if (data->virus_info.virus_name)
-                strcpy(data->virus_info.virus_name, err);
-        }
+        /*virus_scan_inflate_error always return a no null description*/
+        ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Handle object as infected\n", err);
+        data->virus_info.virus_name = ci_buffer_alloc(strlen(err)+1);
+        if (data->virus_info.virus_name)
+            strcpy(data->virus_info.virus_name, err);
         data->virus_info.virus_found = 1;
     }
 
