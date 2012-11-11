@@ -141,6 +141,7 @@ static void dbreload_command(const char *name, int type, const char **argv);
 /*General functions*/
 static int get_filetype(ci_request_t * req, int *encoding);
 static void set_istag(ci_service_xdata_t * srv_xdata);
+static int init_body_data(ci_request_t *req);
 
 /*It is dangerous to pass directly fields of the limits structure in conf_variables,
   becouse in the feature some of this fields will change type (from int to unsigned int 
@@ -394,33 +395,22 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
      content_size = ci_http_content_length(req);
      data->expected_size = content_size;
 
+     /*log objects url*/
+     ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
+
+     if (preview_data_len == 0) {
+         data->must_scanned = NO_DECISION;
+         return CI_MOD_CONTINUE;
+     }
+
      /*must_scanned will fill the data->must_scanned field*/
      if (must_scanned(req, preview_data, preview_data_len) == NO_SCAN) {
           ci_debug_printf(6, "Not in scan list. Allow it...... \n");
           return CI_MOD_ALLOW204;
      }
 
-#ifdef VIRALATOR_MODE
-     if (data->must_scanned == VIR_SCAN) {
-          init_vir_mode_data(req, data);
-          ci_stat_uint64_inc(AV_VIRMODE_REQS, 1);
-     }
-     else {
-#endif
-          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : data->max_object_size);
-          /*Icap server can not send data at the begining.
-            The following call does not needed because the c-icap
-            does not send any data if the ci_req_unlock_data is not called:*/
-          /* ci_req_lock_data(req);*/ 
-
-          /* Let ci_simple_file api to control the percentage of data.
-             For now no data can send */
-          ci_simple_file_lock_all(data->body);
-#ifdef VIRALATOR_MODE
-     }
-#endif
-     if (!data->body)           /*Memory allocation or something else ..... */
-          return CI_ERROR;
+     if (init_body_data(req) == CI_ERROR)
+         return CI_ERROR;
 
      if (preview_data_len) {
 	 if (ci_simple_file_write(data->body, preview_data, preview_data_len,
@@ -428,20 +418,35 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
 	     return CI_ERROR;
      }
 
-     /*We are going to proceed scanning this object log its url*/
-     ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
      return CI_MOD_CONTINUE;
 }
-
-
 
 int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 {
      /*We can put here scanning hor jscripts and html and raw data ...... */
+     int ret;
      int allow_transfer;
      av_req_data_t *data = ci_service_data(req);
      if (!data)
           return CI_ERROR;
+
+     if (data->must_scanned == NO_DECISION) {
+         /*Build preview data
+           TODO: move to c-icap/request.c ....
+          */
+         if (len) {
+             ret = ci_buf_reset_size(&(req->preview_data), len > 1024? 1024 : len);
+             assert(ret > 0);
+             ci_buf_write(&(req->preview_data), buf, len > 1024 ? 1024 : len);
+         }
+         if (must_scanned(req, buf, len) == NO_SCAN) {
+             ci_debug_printf(6, "Outside preview check: Not in scan list. Allow it...... \n");
+         }
+
+         if (init_body_data(req) == CI_ERROR)
+             return CI_ERROR;
+     }
+     assert(data->must_scanned != NO_DECISION);
 
      if (!data->body) /*No body data? consume all content*/
 	 return len;
@@ -712,6 +717,35 @@ int get_filetype(ci_request_t * req, int *iscompressed)
      return filetype;
 }
 
+static int init_body_data(ci_request_t *req)
+{
+    av_req_data_t *data = ci_service_data(req);
+    assert(data);
+#ifdef VIRALATOR_MODE
+     if (data->must_scanned == VIR_SCAN) {
+          init_vir_mode_data(req, data);
+          ci_stat_uint64_inc(AV_VIRMODE_REQS, 1);
+     }
+     else {
+#endif
+          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : data->max_object_size);
+          /*Icap server can not send data at the begining.
+            The following call does not needed because the c-icap
+            does not send any data if the ci_req_unlock_data is not called:*/
+          /* ci_req_lock_data(req);*/ 
+
+          /* Let ci_simple_file api to control the percentage of data.
+             For now no data can send */
+          ci_simple_file_lock_all(data->body);
+#ifdef VIRALATOR_MODE
+     }
+#endif
+     if (!data->body)           /*Memory allocation or something else ..... */
+          return CI_ERROR;
+
+     return CI_OK;
+}
+
 int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 {
 /* We are assuming that file_type is a valid file type.
@@ -729,7 +763,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 #ifdef USE_VSCAN_PROFILES
      if (data->profile) {
          if (data->profile->disable_scan)
-             return NO_SCAN;
+             return (data->must_scanned = NO_SCAN);
          configured_file_types = &data->profile->scan_file_types;
      }
      else 
@@ -739,7 +773,9 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
      file_type = get_filetype(req, &data->encoded);
 
      if (preview_data_len == 0 || file_type < 0) {
-	 ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
+	 if (ci_http_request_url(req, data->url_log, LOG_URL_SIZE) <= 0)
+             strcpy(data->url_log, "-");
+
 	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n", 
 			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
 			 data->url_log);

@@ -65,7 +65,7 @@ struct av_req_profile {
     struct av_req_profile *next;
 };
 
-enum {NO_SCAN=0,SCAN,VIR_SCAN};
+enum {NO_DECISION = -1, NO_SCAN=0,SCAN,VIR_SCAN};
 
 #ifdef VIRALATOR_MODE
 
