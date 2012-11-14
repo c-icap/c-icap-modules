@@ -68,11 +68,11 @@ enum {
 };
 
 static const char *inflate_errors[] = {
-    "No Error",
-    "Inflate Failure",
-    "Corrupted",
-    "Write Failed",
-    "Compression Bomb"
+    "zlib: No Error",
+    "zlib: Inflate Failure",
+    "zlib: Write Failed",
+    "zlib: Corrupted",
+    "zlib: Compression Bomb"
 };
 
 const char *virus_scan_inflate_error(int err)
@@ -90,7 +90,7 @@ const char *virus_scan_inflate_error(int err)
   0 if max_size reached.
  */
 int virus_scan_inflate(int fin, int fout, ci_off_t max_size) {
-    int ret;
+    int ret, retriable;
     unsigned have, written;
     ci_off_t insize, outsize;
     z_stream strm;
@@ -103,10 +103,11 @@ int virus_scan_inflate(int fin, int fout, ci_off_t max_size) {
     strm.opaque = Z_NULL;
     strm.avail_in = 0;
     strm.next_in = Z_NULL;
-    ret = inflateInit(&strm);
+    ret = inflateInit2(&strm, 32 + 15);
     if (ret != Z_OK)
         return INFL_ERR_ERROR;
 
+    retriable = 1;
     outsize = 0;
     insize = 0;
     /* decompress until deflate stream ends or end of file */
@@ -124,6 +125,7 @@ int virus_scan_inflate(int fin, int fout, ci_off_t max_size) {
 
         /* run inflate() on input until output buffer not full */
         do {
+virus_scan_inflate_retry:
             strm.avail_out = CHUNK;
             strm.next_out = out;
             ret = inflate(&strm, Z_NO_FLUSH);
@@ -131,10 +133,21 @@ int virus_scan_inflate(int fin, int fout, ci_off_t max_size) {
             switch (ret) {
             case Z_NEED_DICT:
             case Z_DATA_ERROR:
+                if (retriable) {
+                    ret = inflateInit2(&strm, -15);
+                    retriable = 0;
+                    if (ret == Z_OK) {
+                       strm.avail_in = insize;
+                       strm.next_in = in;
+                       goto virus_scan_inflate_retry;
+                    }
+                    /*else let fail ...*/
+                }
             case Z_MEM_ERROR:
                 inflateEnd(&strm);
                 return INFL_ERR_CORRUPT;
             }
+            retriable = 0; // No more retries allowed
             have = CHUNK - strm.avail_out;
             if ((written = do_file_write(fout, out, have)) != have) {
                 inflateEnd(&strm);
