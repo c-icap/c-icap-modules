@@ -598,6 +598,7 @@ void match_info_init(struct match_info *match_info)
     match_info->match_length = 0;
     match_info->action_db[0] = '\0';
     match_info->action = -1;
+    match_info->last_subcat[0] = '\0';
 }
 
 void match_info_append_db(struct match_info *match_info, const char *db_name, const char *sub_cats)
