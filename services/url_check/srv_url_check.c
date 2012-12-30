@@ -35,7 +35,31 @@
 #include "url_check_body.h"
 
 /*Structs for this module */
-enum http_methods { HTTP_UNKNOWN = 0, HTTP_GET, HTTP_POST };
+enum http_methods { METHOD_UNKNOWN = 0, 
+                    HTTP_GET,
+                    HTTP_POST,
+                    HTTP_PUT,
+                    HTTP_HEAD,
+                    HTTP_CONNECT,
+                    HTTP_TRACE,
+                    HTTP_OPTIONS,
+                    HTTP_DELETE,
+                    METHOD_END
+};
+
+const char *http_methods_str[] = {
+    "UNKNOWN",
+    "GET",
+    "POST",
+    "PUT",
+    "HEAD",
+    "CONNECT",
+    "TRACE",
+    "OPTIONS",
+    "DELETE",
+    NULL
+};
+
 
 #define CHECK_HOST     0x01
 #define CHECK_URL      0x02
@@ -283,15 +307,135 @@ int get_protocol(const char *str,int size)
     return 0;
 }
 
+int strncasecmp_word(const char *word, const char *buf, const char **e)
+{
+    const char *s = word;
+    const char *d = buf;
+    while(*s && *d && !strchr(" \t\n\r", *d)) {
+        if (tolower(*s) != tolower(*d))
+            return -1;
+        s++, d++;
+    }
+    *e = d;
+    return 0;
+}
+
+int get_method(const char *buf, const char **end)
+{
+    const char *s;
+    size_t l;
+    int i;
+    l = strspn(buf, " \n\r\t");
+    s = buf+l;
+    for (i = 1; i < METHOD_END;i++) {
+        if (strncasecmp_word(http_methods_str[i], s, end) == 0) {
+            return i;
+        }
+    }
+    l = strcspn(s, " \n\r\t");
+    *end = s + l;
+    return METHOD_UNKNOWN;
+}
+
+int parse_connect_url(struct http_info *httpinf, const char *buf, const char **end)
+{
+    const char *str = buf;
+    char *e;
+    size_t ulen = 0;
+    while (*str != '\0' && *str != ' ' &&  *str != ':' &&
+           *str != '\r' && *str != '\n' 
+           && *str != '\t') {
+        httpinf->url[ulen] = tolower(*str);
+        httpinf->site[ulen] = httpinf->url[ulen] ;
+        ulen++;
+        str++;
+    }
+    httpinf->url[ulen] = '\0';
+    httpinf->site[ulen] = '\0';
+    if(*str==':'){
+        httpinf->port = strtol(str+1,&e,10);
+        if(!e) { /*parse error*/
+            *end = e;
+            return 0;
+        }
+        str = e;
+    }
+    *end = str;
+    httpinf->proto = HTTPS;
+    return 1;
+}
+
 /*Macro to convert a char hex digit to numeric*/
 #define ctox(h) (h >= 'A'? (toupper(h) - 'A' + 10) : toupper(h) - '0')
+
+int parse_url(struct http_info *httpinf, const char *buf, const char **end)
+{
+    char c;
+    char *tmp;
+    const char *str = buf;
+    size_t url_len;
+    if ((tmp=strstr(str,"://"))) {	 
+        httpinf->proto = get_protocol(str, tmp-str);
+        str = tmp+3;
+        url_len = 0;
+        while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && url_len < CI_MAXHOSTNAMELEN){
+            httpinf->site[url_len] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
+            httpinf->url[url_len] = httpinf->site[url_len];
+            url_len++;
+            str++;
+        }
+        httpinf->site[url_len] = '\0';
+        httpinf->url[url_len] = '\0';
+        if(*str==':'){
+            httpinf->port = strtol(str+1,&tmp,10);
+            if(!tmp || *tmp!='/') {
+                *end = str;
+                return 0;
+            }
+            /*Do we want the port contained into URL? if no:*/
+            /*str = tmp;*/
+        }
+    } else {
+        strcpy(httpinf->url, httpinf->host);
+        strcpy(httpinf->site, httpinf->host);
+        url_len = strlen(httpinf->url);
+        // httpinf->port = 80;
+        httpinf->proto = HTTP;
+    }
+
+    while (*str != ' ' && *str != '\0' && url_len < MAX_PAGE_SIZE) {  /*copy page to the struct. */
+        if (*str == '?' && ! httpinf->args) {
+            httpinf->url[url_len++] = *str++;
+            httpinf->args = &(httpinf->url[url_len]);             
+        } else  if (*str == '%' && 
+                    isxdigit(*(str+1)) && 
+                    /* only printable ascii,  0x20 <= ascii  <= 0x7e :*/
+                    *(str+1) <= '7' && *(str+1) >= '2' &&
+                    isxdigit(*(str+2)) ) {
+             
+            c  = 16 * ctox(*(str+1)) + ctox(*(str+2));
+            /*if it is not space, '+', '%' and it is not 7f=127*/
+            if (strchr(" +%?", c) == NULL && c < 127) {
+                httpinf->url[url_len++] = c;
+                str += 3;
+            }
+            else
+                httpinf->url[url_len++] = *str++;
+        }
+        else //TODO: maybe convert to %xx any non asciii char
+            httpinf->url[url_len++] = *str++;
+    }
+
+    httpinf->url[url_len] = '\0';
+    *end = str;
+    return 1;
+}
 
 int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
                   struct http_info *httpinf)
 {
      const char *str;
-     char *tmp, c;
-     int i, proxy_mode=0;
+     char *tmp;
 
      /*Initialize htto_info struct*/
      httpinf->url[0]='\0';
@@ -299,7 +443,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      httpinf->site[0] = '\0';
      httpinf->host[0] = '\0';
      httpinf->server_ip[0] = '\0';
-     httpinf->method = HTTP_UNKNOWN;
+     httpinf->method = METHOD_UNKNOWN;
      httpinf->port = 0;
      httpinf->proto = UNKNOWN;
      httpinf->http_major = -1;
@@ -320,80 +464,17 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
        strcpy(http->inf,req->xserverip);
        else do a getipbyname
      */
-     
+
      str = req_header->headers[0];
-     if (str[0] == 'g' || str[0] == 'G')        /*Get request.... */
-	 httpinf->method = HTTP_GET;
-     else if (str[0] == 'p' || str[0] == 'P')   /*post request.... */
-	 httpinf->method = HTTP_POST;
-     /*else unknown*/
+     httpinf->method = get_method(str, &str);
+     while (*str == ' ') str++;
 
-     if ((str = strchr(str, ' ')) == NULL) {    /*The request must have the form:GETPOST page HTTP/X.X */
-          return 0;
+     if (httpinf->method == HTTP_CONNECT) {
+         if (!parse_connect_url(httpinf, str, &str))
+             return 0;
      }
-     while (*str == ' ')
-          str++;
-
-
-     /*here we are at the beggining of the URL. If we are in a reqmod request the
-       URL propably has the form http://site[:port]/page or just /page 
-       (where, in squid transparent mode?)
-      */
-     /*check if we are in the form proto://url
-      */
-     if ((tmp=strstr(str,"://"))) {	 
-	 proxy_mode=1;
-	 httpinf->proto = get_protocol(str, tmp-str);
-	 str = tmp+3;
-	 i=0;
-	 while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && i < CI_MAXHOSTNAMELEN){
-	     httpinf->site[i] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
-	     httpinf->url[i] = httpinf->site[i];
-	     i++;
-	     str++;
-	 }
-	 httpinf->site[i] = '\0';
-	 httpinf->url[i] = '\0';
-	 if(*str==':'){
-	     httpinf->port = strtol(str+1,&tmp,10);
-	     if(!tmp || *tmp!='/') 
-		 return 0;
-	     /*Do we want the port contained into URL? if no:*/
-	     /*str = tmp;*/
-	 }
-     }
-     else {
-	 strcpy(httpinf->url, httpinf->host);
-	 strcpy(httpinf->site, httpinf->host);
-	 httpinf->port = 80;
-	 httpinf->proto = HTTP;
-     }
-
-     i = strlen(httpinf->url);
-     while (*str != ' ' && *str != '\0' && i < MAX_PAGE_SIZE) {  /*copy page to the struct. */
-         if (*str == '?' && ! httpinf->args) {
-             httpinf->url[i++] = *str++;
-             httpinf->args = &(httpinf->url[i]);             
-         } else  if (*str == '%' && 
-                     isxdigit(*(str+1)) && 
-                     /* only printable ascii,  0x20 <= ascii  <= 0x7e :*/
-                     *(str+1) <= '7' && *(str+1) >= '2' &&
-                     isxdigit(*(str+2)) ) {
-             
-             c  = 16 * ctox(*(str+1)) + ctox(*(str+2));
-             /*if it is not space, '+', '%' and it is not 7f=127*/
-             if (strchr(" +%?", c) == NULL && c < 127) {
-                 httpinf->url[i++] = c;
-                 str += 3;
-             }
-             else
-                 httpinf->url[i++] = *str++;
-         }
-         else //TODO: maybe convert to %xx any non asciii char
-             httpinf->url[i++] = *str++;      
-     }
-
-     httpinf->url[i] = '\0';
+     else if (!parse_url(httpinf, str, &str))
+         return 0;
 
      if (*str != ' ') {         /*Where is the protocol info????? */
           return 0;
@@ -431,8 +512,10 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
           return CI_ERROR;
 
-     if (!get_http_info(req, req_header, &uc->httpinf)) /*Unknown method or something else...*/
+     if (!get_http_info(req, req_header, &uc->httpinf)) { /*Unknown method or something else...*/
+         ci_debug_printf(2, "srv_url_check: Can not get required information to process request. Firstline: %s\n", req_header->headers[0]);
 	 return CI_MOD_ALLOW204;
+     }
 
      ci_debug_printf(9, "srv_url_check: URL  to host %s\n", uc->httpinf.site);
      ci_debug_printf(9, "srv_url_check: URL  page %s\n", uc->httpinf.url);
