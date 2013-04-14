@@ -17,15 +17,15 @@
  */
 
 
-#include "c-icap.h"
-#include "service.h"
-#include "header.h"
-#include "mem.h"
-#include "body.h"
-#include "simple_api.h"
-#include "debug.h"
-#include "cfg_param.h"
-#include "txtTemplate.h"
+#include "c_icap/c-icap.h"
+#include "c_icap/service.h"
+#include "c_icap/header.h"
+#include "c_icap/mem.h"
+#include "c_icap/body.h"
+#include "c_icap/simple_api.h"
+#include "c_icap/debug.h"
+#include "c_icap/cfg_param.h"
+#include "c_icap/txtTemplate.h"
 
 #include <time.h>
 #include <errno.h>

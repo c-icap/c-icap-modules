@@ -16,9 +16,9 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include "body.h"
-#include "request.h"
-#include "debug.h"
+#include "c_icap/body.h"
+#include "c_icap/request.h"
+#include "c_icap/debug.h"
 #include "url_check_body.h"
 
 int body_data_init(struct body_data *bd, enum body_type type,  int size, ci_membuf_t *err_page)

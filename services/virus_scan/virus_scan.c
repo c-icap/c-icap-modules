@@ -17,20 +17,20 @@
  */
 
 
-#include "c-icap.h"
-#include "service.h"
-#include "header.h"
-#include "simple_api.h"
-#include "debug.h"
-#include "cfg_param.h"
+#include "c_icap/c-icap.h"
+#include "c_icap/service.h"
+#include "c_icap/header.h"
+#include "c_icap/simple_api.h"
+#include "c_icap/debug.h"
+#include "c_icap/cfg_param.h"
 #include "virus_scan.h"
-#include "filetype.h"
-#include "ci_threads.h"
-#include "mem.h"
-#include "commands.h"
-#include "txt_format.h"
-#include "txtTemplate.h"
-#include "stats.h"
+#include "c_icap/filetype.h"
+#include "c_icap/ci_threads.h"
+#include "c_icap/mem.h"
+#include "c_icap/commands.h"
+#include "c_icap/txt_format.h"
+#include "c_icap/txtTemplate.h"
+#include "c_icap/stats.h"
 #include "../../common.h"
 #include <errno.h>
 #include <assert.h>

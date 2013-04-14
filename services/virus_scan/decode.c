@@ -16,9 +16,9 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include "c-icap.h"
-#include "mem.h"
-#include "debug.h"
+#include "c_icap/c-icap.h"
+#include "c_icap/mem.h"
+#include "c_icap/debug.h"
 #include "../../common.h"
 #include <errno.h>
 #include <assert.h>

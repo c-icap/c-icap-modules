@@ -16,19 +16,19 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include "c-icap.h"
-#include "service.h"
-#include "header.h"
-#include "body.h"
-#include "simple_api.h"
-#include "lookup_table.h"
-#include "debug.h"
-#include "access.h"
-#include "acl.h"
+#include "c_icap/c-icap.h"
+#include "c_icap/service.h"
+#include "c_icap/header.h"
+#include "c_icap/body.h"
+#include "c_icap/simple_api.h"
+#include "c_icap/lookup_table.h"
+#include "c_icap/debug.h"
+#include "c_icap/access.h"
+#include "c_icap/acl.h"
 #include "../../common.h"
-#include "commands.h"
-#include "txt_format.h"
-#include "txtTemplate.h"
+#include "c_icap/commands.h"
+#include "c_icap/txt_format.h"
+#include "c_icap/txtTemplate.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif

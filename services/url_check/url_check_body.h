@@ -16,7 +16,7 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include "body.h"
+#include "c_icap/body.h"
 
 enum body_type {NO_BODY_TYPE=0, CACHED, RING, ERROR_PAGE};
 

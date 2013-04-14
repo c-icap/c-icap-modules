@@ -1,9 +1,9 @@
 #include "sguardDB.h"
-#include "mem.h"
-#include "debug.h"
+#include "c_icap/mem.h"
+#include "c_icap/debug.h"
 #include "../../common.h"
 #ifdef BUILD_SGUARD_TOOL
-#include "cfg_param.h"
+#include "c_icap/cfg_param.h"
 #include <assert.h>
 #endif
 

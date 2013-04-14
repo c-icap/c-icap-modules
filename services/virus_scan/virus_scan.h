@@ -1,9 +1,9 @@
 #ifndef __SRV_CLAMAV_H
 #define __SRV_CLAMAV_H
 
-#include "body.h"
-#include "request.h"
-#include "acl.h"
+#include "c_icap/body.h"
+#include "c_icap/request.h"
+#include "c_icap/acl.h"
 #include "common.h"
 
 #define VIRALATOR_MODE
