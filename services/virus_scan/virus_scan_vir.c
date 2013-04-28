@@ -50,17 +50,14 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
      char buf[512];
      const char *lang;
      void *temp_file_name;
-     ci_http_response_reset_headers(req);
-     ci_http_response_add_header(req, "HTTP/1.1 200 OK");
-     ci_http_response_add_header(req, "Server: C-ICAP/virus_scan");
-     ci_http_response_add_header(req, "Connection: close");
-     ci_http_response_add_header(req, "Content-Type: text/html");
 
+     /*Initilize the viralator mode*/
      data->last_update = time(NULL);
-     data->requested_filename = NULL;
      data->vir_mode_state = VIR_ZERO;
-
-
+     /*Try to find out the name of downloaded object.
+       The HTTP response headers used, so virus_scan_compute_name should
+       called before destroy the HTTP response headers.
+      */
      if ((data->requested_filename = virus_scan_compute_name(req)) != NULL) {
           /* data->requested_filename may contain escaped characters, if so we must
              remove them in the file name, but not requested file name.
@@ -87,6 +84,12 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
 	 data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
      }
 
+     /*Remove old HTTP response headers and replace with our*/
+     ci_http_response_reset_headers(req);
+     ci_http_response_add_header(req, "HTTP/1.1 200 OK");
+     ci_http_response_add_header(req, "Server: C-ICAP/virus_scan");
+     ci_http_response_add_header(req, "Connection: close");
+     ci_http_response_add_header(req, "Content-Type: text/html");
 
      error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_HEAD",
 						virus_scan_format_table);
