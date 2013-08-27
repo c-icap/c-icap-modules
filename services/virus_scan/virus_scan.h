@@ -1,10 +1,13 @@
-#ifndef __SRV_CLAMAV_H
-#define __SRV_CLAMAV_H
+#ifndef __SRV_VIRUS_SCAN_H
+#define __SRV_VIRUS_SCAN_H
 
 #include "c_icap/body.h"
 #include "c_icap/request.h"
 #include "c_icap/acl.h"
+#include "c_icap/array.h"
+#include "c_icap/registry.h"
 #include "common.h"
+#include "av_body.h"
 
 #define VIRALATOR_MODE
 
@@ -14,13 +17,39 @@ struct av_file_types;
 struct av_req_profile;
 #endif
 
+#define AV_ENGINES_REGISTRY "virus_scan::engines"
+
+#define AV_NAME_SIZE 64
+enum av_actions {AV_NONE = 0, AV_CLEAN, AV_FILE_REMOVED};
+
 typedef struct av_virus_info {
-    char *virus_name;
+    char virus_name[AV_NAME_SIZE];
     int virus_found;
+    int disinfected;
+    ci_vector_t *viruses;
 } av_virus_info_t;
 
+typedef struct av_virus {
+    char virus[AV_NAME_SIZE];
+    char type[AV_NAME_SIZE];
+    int problemID;
+    int action;
+} av_virus_t;
+
+#define AV_OPT_MEM_SCAN 0x01
+#define AV_OPT_CLEAN    0x02
+
+typedef struct av_engine {
+    const char *name;
+    uint64_t  options;
+    int (*scan)(struct av_body_data *body, av_virus_info_t *vinfo);
+    const char *(*signature)();
+    const char *(*version_str)();
+} av_engine_t;
+
+#define AV_MAX_ENGINES 64
 typedef struct av_req_data{
-     ci_simple_file_t *body;
+    struct av_body_data body;
      ci_request_t *req;
      int must_scanned ;
      int allow204;
@@ -47,6 +76,7 @@ typedef struct av_req_data{
      int send_percent_bytes;
      ci_off_t start_send_after;
      int encoded;
+     const av_engine_t *engine[AV_MAX_ENGINES];
 }av_req_data_t;
 
 struct av_file_types {
@@ -61,11 +91,15 @@ struct av_req_profile {
     ci_off_t start_send_after; 
     ci_off_t max_object_size;
     struct av_file_types scan_file_types;
+    const av_engine_t *engines[AV_MAX_ENGINES];
     ci_access_entry_t *access_list;
     struct av_req_profile *next;
 };
 
 enum {NO_DECISION = -1, NO_SCAN=0,SCAN,VIR_SCAN};
+
+#define av_register_engine(engine) ci_registry_add_item(AV_ENGINES_REGISTRY, (engine)->name, engine)
+CI_DECLARE_MOD_DATA int av_reload_istag();
 
 #ifdef VIRALATOR_MODE
 
@@ -87,15 +121,8 @@ void av_req_profile_release_profiles();
 struct av_req_profile *av_req_profile_select(ci_request_t *req);
 #endif
 
-/*Clamav support functions*/
-int clamav_init();
-int clamav_scan(int fd,  av_virus_info_t *vinfo);
-int clamav_get_versions(unsigned int *level, unsigned int *version, char *str, size_t len);
-int clamav_init_virusdb();
-int clamav_reload_virusdb();
-void clamav_destroy_virusdb();
-
 /*Decoding functions*/
 int virus_scan_inflate(int fin, int fout, ci_off_t max_size);
+int virus_scan_inflate_mem(void *mem, size_t mem_size, int fout, ci_off_t max_size);
 const char *virus_scan_inflate_error(int err);
 #endif

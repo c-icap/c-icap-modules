@@ -10,6 +10,7 @@ AM_INIT_AUTOMAKE([subdir-objects])
 
 AC_PROG_CC
 AM_PROG_CC_C_O
+AC_C_BIGENDIAN
 
 AC_DISABLE_STATIC
 AC_LIBTOOL_DLOPEN
@@ -151,41 +152,69 @@ AC_ARG_WITH(clamav,
 ],
 )
 
-AC_SUBST(clamavinc)
-AC_SUBST(clamavlib)
-OLD_CFLAGS=$CFLAGS
-CFLAGS=$clamavinc
-AC_MSG_CHECKING([for clamav 0.90.x or newer])
-AC_TRY_COMPILE(
-[#include <clamav.h>], 
-[struct cl_engine node; node.refcount=1;],
-AC_DEFINE(HAVE_LIBCLAMAV_09X,1,[Define HAVE_LIBCLAMAV_09X if have clamav 0.90.x or newer])
-AC_MSG_RESULT(yes), 
-AC_MSG_RESULT(no),
-)
+#check if the clamav is installed
+if test a"$clamav" != "ano"; then
+   AC_MSG_CHECKING([for a working clamav library])
+#  Save old CFLAGS/LDFLAGS
+   OLDCFLAGS=$CFLAGS
+   OLDLIBS=$LIBS
+   CFLAGS="$clamavinc $CFLAGS"
+   LIBS="$clamavlib -lclamav $LIBS"
+   AC_LINK_IFELSE(
+                [
+                    #include <clamav.h>
+                    int main(){
+                         char *s = cl_retver();
+                         return 0;
+                    }
+                ],
+               [clamav="yes";    AC_MSG_RESULT(yes)], 
+               [clamav="no";    AC_MSG_RESULT(no)]
+   )
+   CFLAGS=$OLDCFLAGS
+   LIBS=$OLDLIBS
+else
+    AC_MSG_NOTICE([clamav is disabled])
+fi
 
-AC_MSG_CHECKING([for maxratio field in cl_limits struct])
-AC_TRY_COMPILE(
-[#include <clamav.h>], 
-[struct cl_limits limits; limits.maxratio=200;],
-AC_DEFINE(HAVE_LIBCLAMAV_LIMITS_MAXRATIO,1,[Define HAVE_LIBCLAMAV_LIMITS_MAXRATIO if has cl_limits.maxratio])
-AC_MSG_RESULT(yes), 
-AC_MSG_RESULT(no),
-)
+if test a"$clamav" = "ayes"; then
+    AC_DEFINE(HAVE_CLAMAV, 1, [Define HAVE_CLAMAV if clamav is installed])
+    AC_SUBST(clamavinc)
+    AC_SUBST(clamavlib)
+    OLD_CFLAGS=$CFLAGS
+    CFLAGS=$clamavinc
+    AC_MSG_CHECKING([for clamav 0.90.x or newer])
+    AC_TRY_COMPILE(
+    [#include <clamav.h>], 
+    [struct cl_engine node; node.refcount=1;],
+    AC_DEFINE(HAVE_LIBCLAMAV_09X,1,[Define HAVE_LIBCLAMAV_09X if have clamav 0.90.x or newer])
+    AC_MSG_RESULT(yes), 
+    AC_MSG_RESULT(no),
+    )
 
-#
-# clamav drop the cl_limits struct at version 0.95. I think it is 
-# a good check for clamav lib version.
-AC_MSG_CHECKING([for clamav 0.95 or newer])
-AC_TRY_COMPILE(
-[#include <clamav.h>], 
-[struct cl_limits limist;],
-AC_MSG_RESULT(no), 
-AC_DEFINE(HAVE_LIBCLAMAV_095,1,[Define HAVE_LIBCLAMAV_095 if have clamav 0.95.x or newer])
-AC_MSG_RESULT(yes),
-)
-# restore flags  / clamav tests
-CFLAGS=$OLD_CFLAGS
+    AC_MSG_CHECKING([for maxratio field in cl_limits struct])
+    AC_TRY_COMPILE(
+    [#include <clamav.h>], 
+    [struct cl_limits limits; limits.maxratio=200;],
+    AC_DEFINE(HAVE_LIBCLAMAV_LIMITS_MAXRATIO,1,[Define HAVE_LIBCLAMAV_LIMITS_MAXRATIO if has cl_limits.maxratio])
+    AC_MSG_RESULT(yes), 
+    AC_MSG_RESULT(no),
+    )
+
+    #
+    # clamav drop the cl_limits struct at version 0.95. I think it is 
+    # a good check for clamav lib version.
+    AC_MSG_CHECKING([for clamav 0.95 or newer])
+    AC_TRY_COMPILE(
+    [#include <clamav.h>], 
+    [struct cl_limits limist;],
+    AC_MSG_RESULT(no), 
+    AC_DEFINE(HAVE_LIBCLAMAV_095,1,[Define HAVE_LIBCLAMAV_095 if have clamav 0.95.x or newer])
+    AC_MSG_RESULT(yes),
+    )
+    # restore flags  / clamav tests
+    CFLAGS=$OLD_CFLAGS
+fi # if test a"$clamav" = "ayes";
 
 ###############
 # Detect Berkeley DB library

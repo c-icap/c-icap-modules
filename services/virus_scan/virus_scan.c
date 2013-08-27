@@ -1,5 +1,9 @@
 /*
- *  Copyright (C) 2004 Christos Tsantilas
+ *  Copyright (C) 2004-2012 Christos Tsantilas
+ *
+ *  Other contributors/sponsors:
+ *      - Multiple av engines support funded by Endian (http://www.endian.com)
+ *	  and Panda Security (http://www.pandasecurity.com/)
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -16,7 +20,6 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-
 #include "c_icap/c-icap.h"
 #include "c_icap/service.h"
 #include "c_icap/header.h"
@@ -32,26 +35,19 @@
 #include "c_icap/txtTemplate.h"
 #include "c_icap/stats.h"
 #include "../../common.h"
+#include "md5.h"
 #include <errno.h>
 #include <assert.h>
 
 int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len);
 
-long int CLAMAV_MAXRECLEVEL = 5;
-long int CLAMAV_MAX_FILES = 0;
-ci_off_t CLAMAV_MAXFILESIZE = 100 * 1048576; /* maximal archived file size == 100 Mb */
-ci_off_t CLAMAV_MAXSCANSIZE = 200 * 1048576;
-char *CLAMAV_TMP = NULL;
-#define CLAMAV_VERSION_SIZE 64
-char CLAMAV_VERSION[CLAMAV_VERSION_SIZE];
+static ci_str_vector_t *DEFAULT_ENGINE_NAMES = NULL;
+static const av_engine_t *DEFAULT_ENGINES[AV_MAX_ENGINES];
 
-#ifdef HAVE_FD_PASSING
-int USE_CLAMD = 0;
-char *CLAMD_SOCKET_PATH = "/var/run/clamav/clamd.ctl";
-#endif
-
+static void build_reply_headers(ci_request_t *req, av_virus_info_t *vinfo);
 void generate_error_page(av_req_data_t * data, ci_request_t * req);
 char *virus_scan_compute_name(ci_request_t * req);
+static void rebuild_content_length(ci_request_t *req, struct av_body_data *body);
 /***********************************************************************************/
 /* Module definitions                                                              */
 
@@ -59,6 +55,7 @@ static int SEND_PERCENT_DATA = 0;      /* By default will not send any bytes wit
 static int ALLOW204 = 1;
 static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
+static int PASSONERROR = 0;
 
 static struct ci_magics_db *magic_db = NULL;
 static struct av_file_types SCAN_FILE_TYPES = {NULL, NULL};
@@ -79,7 +76,7 @@ static int AV_VIRUSES_FOUND = -1;
 /*********************/
 /* Formating table   */
 static int fmt_virus_scan_virusname(ci_request_t *req, char *buf, int len, const char *param);
-static int fmt_virus_scan_clamversion(ci_request_t *req, char *buf, int len, const char *param);
+static int fmt_virus_scan_av_version(ci_request_t *req, char *buf, int len, const char *param);
 static int fmt_virus_scan_http_url(ci_request_t *req, char *buf, int len, const char *param);
 #ifdef VIRALATOR_MODE
 int fmt_virus_scan_expect_size(ci_request_t *req, char *buf, int len, const char *param);
@@ -93,7 +90,7 @@ int fmt_virus_scan_profile(ci_request_t *req, char *buf, int len, const char *pa
 
 struct ci_fmt_entry virus_scan_format_table [] = {
     {"%VVN", "Virus name", fmt_virus_scan_virusname},
-    {"%VVV", "Clamav Antivirus name", fmt_virus_scan_clamversion},
+    {"%VVV", "Antivirus Engine", fmt_virus_scan_av_version},
     {"%VU", "The HTTP url", fmt_virus_scan_http_url},
 #ifdef VIRALATOR_MODE
     {"%VFR", "downloaded file requested name", fmt_virus_scan_filename_requested},
@@ -131,13 +128,11 @@ static void virus_scan_parse_args(av_req_data_t * data, char *args);
 /*Configuration Functions*/
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
-static int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata);
+int cfg_av_set_str_vector(const char *directive, const char **argv, void *setdata);
 #ifdef USE_VSCAN_PROFILES
 int cfg_av_req_profile(const char *directive, const char **argv, void *setdata);
 int cfg_av_req_profile_access(const char *directive, const char **argv, void *setdata);
 #endif
-/*Commands functions*/
-static void dbreload_command(const char *name, int type, const char **argv);
 /*General functions*/
 static int get_filetype(ci_request_t * req, int *encoding);
 static void set_istag(ci_service_xdata_t * srv_xdata);
@@ -159,21 +154,12 @@ static struct ci_conf_entry conf_variables[] = {
      {"StartSendingDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"StartSendPercentDataAfter", &START_SEND_AFTER, ci_cfg_size_off, NULL},
      {"Allow204Responces", &ALLOW204, ci_cfg_onoff, NULL},
+     {"PassOnError", &PASSONERROR, ci_cfg_onoff, NULL},
+     {"DefaultEngine", &DEFAULT_ENGINE_NAMES, cfg_av_set_str_vector, NULL},
 #ifdef USE_VSCAN_PROFILES
      {"Profile", NULL, cfg_av_req_profile, NULL},
      {"ProfileAccess", NULL, cfg_av_req_profile_access, NULL},
 #endif
-#ifdef HAVE_FD_PASSING
-     {"UseClamd", &USE_CLAMD, ci_cfg_onoff, NULL},
-     {"ClamdSocket", &CLAMD_SOCKET_PATH, ci_cfg_set_str, NULL},
-#endif
-     {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
-     {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
-/*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
-     {"ClamAvMaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
-      NULL},
-     {"ClamAvMaxScanSize", &CLAMAV_MAXSCANSIZE, ci_cfg_size_off, NULL},
-     {"ClamAvTmpDir", NULL, cfg_ClamAvTmpDir, NULL},
 #ifdef VIRALATOR_MODE
      {"VirSaveDir", &VIR_SAVE_DIR, ci_cfg_set_str, NULL},
      {"VirHTTPServer", &VIR_HTTP_SERVER, ci_cfg_set_str, NULL}, /*Deprecated*/
@@ -181,13 +167,12 @@ static struct ci_conf_entry conf_variables[] = {
      {"VirUpdateTime", &VIR_UPDATE_TIME, ci_cfg_set_int, NULL},
      {"VirScanFileTypes", &SCAN_FILE_TYPES, cfg_ScanFileTypes, NULL},
 #endif
-     {NULL, NULL, NULL, NULL}
 };
 
 
 CI_DECLARE_MOD_DATA ci_service_module_t service = {
      "virus_scan",              /*Module name */
-     "Clamav/Antivirus service",        /*Module short description */
+     "Antivirus service",        /*Module short description */
      ICAP_RESPMOD | ICAP_REQMOD,        /*Service type responce or request modification */
      virus_scan_init_service,    /*init_service. */
      virus_scan_post_init_service,   /*post_init_service. */
@@ -233,21 +218,13 @@ int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
      AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T,  "Service virus_scan");
      AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T,  "Service virus_scan");
 
-     /*initialize service commands */
-     register_command("virus_scan:clamav_dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
-                      dbreload_command);
-     register_command("srv_clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
-                      dbreload_command);
-
+     memset(DEFAULT_ENGINES, 0, AV_MAX_ENGINES * sizeof(av_engine_t *));
      return CI_OK;
 }
 
 int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
-    if (!clamav_init())
-        return CI_ERROR;
-
     set_istag(virus_scan_xdata);
     return CI_OK;
 }
@@ -256,19 +233,53 @@ void virus_scan_close_service()
 {
      av_file_types_destroy(&SCAN_FILE_TYPES);
      ci_object_pool_unregister(AVREQDATA_POOL);
-     clamav_destroy_virusdb();
-     if (CLAMAV_TMP)
-         free(CLAMAV_TMP);
 
 #ifdef USE_VSCAN_PROFILES
      av_req_profile_release_profiles();
 #endif
+     if (DEFAULT_ENGINE_NAMES) {
+         ci_str_vector_destroy(DEFAULT_ENGINE_NAMES);
+         DEFAULT_ENGINE_NAMES = NULL;
+     }
+     memset(DEFAULT_ENGINES, 0, AV_MAX_ENGINES * sizeof(av_engine_t *));
+}
+
+static int get_first_engine(void *data, const char *label, const void *obj)
+{
+    const void **eng = (const void **)data;
+    *eng = obj;
+    ci_debug_printf(1, "Setting antivirus default engine: %s\n", label);
+    return 1;
+}
+
+void select_default_engine()
+{
+    int i, k;
+    const char *eng_name;
+    if (DEFAULT_ENGINE_NAMES) {
+        for(k = 0, i = 0; i < AV_MAX_ENGINES - 1 && (eng_name = ci_str_vector_get(DEFAULT_ENGINE_NAMES, i)); i++) {
+            DEFAULT_ENGINES[k] = ci_registry_get_item(AV_ENGINES_REGISTRY, eng_name);
+            if (DEFAULT_ENGINES[k]) k++;
+            else {
+                ci_debug_printf(1, "WARNING! Wrong antivirus engine name: %s\n", eng_name);
+            }
+        }
+        DEFAULT_ENGINES[k] = NULL;
+    }
+
+    if (!DEFAULT_ENGINES[0]) {
+        ci_registry_iterate(AV_ENGINES_REGISTRY, &(DEFAULT_ENGINES[0]), get_first_engine);
+        DEFAULT_ENGINES[1] = NULL;
+    }
 }
 
 void *virus_scan_init_request_data(ci_request_t * req)
 {
-     int preview_size;
+    int preview_size;
      av_req_data_t *data;
+
+     if (! DEFAULT_ENGINES[0])
+         select_default_engine();
 
      preview_size = ci_req_preview_size(req);
 
@@ -283,10 +294,12 @@ void *virus_scan_init_request_data(ci_request_t * req)
                                "Error allocation memory for service data!!!!!!!\n");
                return NULL;
           }
-          data->body = NULL;
+          memset(&data->body,0, sizeof(struct av_body_data));
           data->error_page = NULL;
-          data->virus_info.virus_name = NULL;
+          data->virus_info.virus_name[0] = '\0';
           data->virus_info.virus_found = 0;
+          data->virus_info.disinfected = 0;
+          data->virus_info.viruses = NULL;
           data->must_scanned = SCAN;
           data->virus_check_done = 0;
           if (ALLOW204)
@@ -296,6 +309,8 @@ void *virus_scan_init_request_data(ci_request_t * req)
           data->args.forcescan = 0;
           data->args.sizelimit = 1;
           data->args.mode = 0;
+          
+          memcpy(data->engine, DEFAULT_ENGINES, AV_MAX_ENGINES * sizeof(av_engine_t *));
 
           if (req->args) {
                ci_debug_printf(5, "service arguments:%s\n", req->args);
@@ -309,7 +324,6 @@ void *virus_scan_init_request_data(ci_request_t * req)
 #ifdef USE_VSCAN_PROFILES
           data->profile = NULL;
 #endif
-
 #ifdef VIRALATOR_MODE
           data->last_update = 0;
           data->requested_filename = NULL;
@@ -328,20 +342,19 @@ void virus_scan_release_request_data(void *data)
           ci_debug_printf(5, "Releasing virus_scan data.....\n");
 #ifdef VIRALATOR_MODE
           if (((av_req_data_t *) data)->must_scanned == VIR_SCAN) {
-               ci_simple_file_release(((av_req_data_t *) data)->body);
+               av_body_data_release(&(((av_req_data_t *) data)->body));
                if (((av_req_data_t *) data)->requested_filename)
                     ci_buffer_free(((av_req_data_t *) data)->requested_filename);
           }
           else
 #endif
-          if (((av_req_data_t *) data)->body)
-               ci_simple_file_destroy(((av_req_data_t *) data)->body);
+               av_body_data_destroy(&(((av_req_data_t *) data)->body));
 
           if (((av_req_data_t *) data)->error_page)
                ci_membuf_free(((av_req_data_t *) data)->error_page);
 
-          if (((av_req_data_t *) data)->virus_info.virus_name)
-               ci_buffer_free(((av_req_data_t *) data)->virus_info.virus_name);
+          if (((av_req_data_t *) data)->virus_info.viruses)
+              ci_vector_destroy(((av_req_data_t *) data)->virus_info.viruses);
           ci_object_pool_free(data);
      }
 }
@@ -377,6 +390,9 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
          
          data->send_percent_bytes = prof->send_percent_data >= 0 ? prof->send_percent_data : SEND_PERCENT_DATA;
          data->start_send_after = prof->start_send_after >= 0 ? prof->start_send_after : START_SEND_AFTER;
+
+         if (prof->engines[0] != NULL)
+             memcpy(data->engine, prof->engines, AV_MAX_ENGINES * sizeof(av_engine_t *));
          snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", prof->name);
          buf[sizeof(buf)-1] = '\0';
          ci_icap_add_xheader(req, buf);
@@ -389,7 +405,11 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
          data->send_percent_bytes = SEND_PERCENT_DATA;
          data->start_send_after = START_SEND_AFTER;
      }
-     
+
+     if (!data->engine[0]) {
+         ci_debug_printf(1, "Antivirus engine is not available, allow 204\n");
+         return CI_MOD_ALLOW204;
+     }     
 
      /*Compute the expected size, will be used by must_scanned*/
      content_size = ci_http_content_length(req);
@@ -413,8 +433,8 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
          return CI_ERROR;
 
      if (preview_data_len) {
-	 if (ci_simple_file_write(data->body, preview_data, preview_data_len,
-				  ci_req_hasalldata(req)) == CI_ERROR)
+         if (av_body_data_write(&data->body, preview_data, preview_data_len,
+                                ci_req_hasalldata(req)) == CI_ERROR)
 	     return CI_ERROR;
      }
 
@@ -448,7 +468,7 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
      }
      assert(data->must_scanned != NO_DECISION);
 
-     if (!data->body) /*No body data? consume all content*/
+     if (data->body.type == AV_BT_NONE) /*No body data? consume all content*/
 	 return len;
 
      if (data->must_scanned == NO_SCAN
@@ -456,11 +476,11 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
          || data->must_scanned == VIR_SCAN
 #endif
          ) {                    /*if must not scanned then simply write the data and exit..... */
-          return ci_simple_file_write(data->body, buf, len, iseof);
+          return av_body_data_write(&data->body, buf, len, iseof);
      }
 
      if (data->args.sizelimit
-         && ci_simple_file_size(data->body) >= data->max_object_size) {
+         && av_body_data_size(&data->body) >= data->max_object_size) {
          ci_debug_printf(5, "Object bigger than max scanable file. \n");
           data->must_scanned = 0;
 
@@ -471,21 +491,21 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
           }
           else { /*Send early response.*/
               ci_req_unlock_data(req);      /*Allow ICAP to send data before receives the EOF....... */
-              ci_simple_file_unlock_all(data->body);        /*Unlock all body data to continue send them..... */
+              av_body_data_unlock_all(&data->body);        /*Unlock all body data to continue send them..... */
           }
 
      }                          /*else Allow transfer data->send_percent_bytes of the data */
      else if (data->args.mode != 1 &&   /*not in the simple mode */
-              data->start_send_after < ci_simple_file_size(data->body)) {
+              data->start_send_after < av_body_data_size(&data->body)) {
           ci_req_unlock_data(req);
 #if 1
           assert(data->send_percent_bytes >= 0 && data->send_percent_bytes <= 100);
 #endif
           allow_transfer =
-              (data->send_percent_bytes * (data->body->endpos + len)) / 100;
-          ci_simple_file_unlock(data->body, allow_transfer);
+              (data->send_percent_bytes * (av_body_data_size(&data->body) + len)) / 100;
+          av_body_data_unlock(&data->body, allow_transfer);
      }
-     return ci_simple_file_write(data->body, buf, len, iseof);
+     return av_body_data_write(&data->body, buf, len, iseof);
 }
 
 
@@ -503,7 +523,8 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
      }
 #endif
 
-     if (data->virus_info.virus_found && data->error_page == 0) {
+     if (data->virus_info.virus_found && data->error_page == 0 && 
+         !(data->virus_info.disinfected)) {
           /*Inform user. Q:How? Maybe with a mail...... */
           return CI_EOF;        /* Do not send more data if a virus found and data has sent (readpos!=0) */
      }
@@ -512,8 +533,8 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
      if (data->error_page)
           return ci_membuf_read(data->error_page, buf, len);
 
-     if(data->body)
-	 bytes = ci_simple_file_read(data->body, buf, len);
+     if(data->body.type != AV_BT_NONE)
+	 bytes = av_body_data_read(&data->body, buf, len);
      else
 	 bytes =0;
      return bytes;
@@ -522,13 +543,11 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
 int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
                  ci_request_t * req)
 {
-     int ret = CI_OK;
      if (rbuf && rlen) {
           *rlen = virus_scan_read_from_net(rbuf, *rlen, iseof, req);
 	  if (*rlen == CI_ERROR)
 	       return CI_ERROR;
-          else if (*rlen < 0)
-	       ret = CI_OK;
+          /*else if (*rlen < 0) ignore*/
      }
      else if (iseof) {
 	 if (virus_scan_read_from_net(NULL, 0, iseof, req) == CI_ERROR)
@@ -545,13 +564,10 @@ int virus_scan(ci_request_t * req, av_req_data_t *data);
 int virus_scan_end_of_data_handler(ci_request_t * req)
 {
      av_req_data_t *data = ci_service_data(req);
-     ci_simple_file_t *body;
      const char *http_client_ip;
-
-     if (!data || !data->body)
+     if (!data || data->body.type == AV_BT_NONE)
           return CI_MOD_DONE;
 
-     body = data->body;
      data->virus_check_done = 1;
      ci_debug_printf(6, "Scan from file\n");
      if (virus_scan(req, data) == CI_ERROR) {
@@ -568,6 +584,12 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
 			  (req->user[0] != '\0'? req->user: "-"),
 			  data->url_log
 	      );
+     }
+     if ((data->virus_info.virus_found && data->virus_info.disinfected) && 
+         (!ci_req_sent_data(req) || data->must_scanned == VIR_SCAN)) {
+         rebuild_content_length(req, &data->body);
+     }
+     else if (data->virus_info.virus_found){
           if (!ci_req_sent_data(req)) {   /*If no data had sent we can send an error page  */
 #ifdef VIRALATOR_MODE
               if (data->must_scanned == VIR_SCAN) {
@@ -598,40 +620,40 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
           return CI_MOD_DONE;
      }
 
-     ci_request_set_str_attribute(req,"virus_scan:action", "passed");
+     if (data->virus_info.disinfected) 
+         ci_request_set_str_attribute(req,"virus_scan:action", "disinfected");
+     else
+         ci_request_set_str_attribute(req,"virus_scan:action", "passed");
 #ifdef VIRALATOR_MODE
      if (data->must_scanned == VIR_SCAN) {
           endof_data_vir_mode(data, req);
      }
      else 
 #endif /* VIRELATOR_MODE */
-         if (data->allow204 && !ci_req_sent_data(req)) {
+         if (data->allow204 && !ci_req_sent_data(req) && !data->virus_info.disinfected) {
              ci_debug_printf(6, "virus_scan module: Respond with allow 204\n");
              return CI_MOD_ALLOW204;
          }
      ci_req_unlock_data(req);
-     ci_simple_file_unlock_all(body);   /*Unlock all data to continue send them..... */
-     ci_debug_printf(6,
-                     "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
-                     body->flags, (CAST_OFF_T) body->unlocked);
+     av_body_data_unlock_all(&data->body);   /*Unlock all data to continue send them..... */
+//     ci_debug_printf(6,
+//                     "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
+//                     body->flags, (CAST_OFF_T) body->unlocked);
      return CI_MOD_DONE;
 }
 
 int virus_scan(ci_request_t * req, av_req_data_t *data)
 {
-    int fd_to_scan, ret;
-    ci_simple_file_t *body;
+    int ret, scan_status, i;
 #ifdef HAVE_ZLIB
-    char tmpfname[CI_FILENAME_LEN+1];
     const char *err;
-    int unzippedfd = -1;
 #endif
 
     if (data->must_scanned == NO_SCAN) {       /*If exceeds the MAX_OBJECT_SIZE for example ......  */
         return CI_OK;
     }
 
-    body = data->body;
+/********************************/
     ret = 1;
 
     /*
@@ -641,28 +663,43 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
     */
 #ifdef HAVE_ZLIB
     if (data->encoded == CI_ENCODE_DEFLATE) {
-        unzippedfd = ci_mktemp_file(CI_TMPDIR, "CI_TMP_XXXXXX", tmpfname);
-        if (!unzippedfd) {
+        data->body.decoded_fd = ci_mktemp_file(CI_TMPDIR, "CI_TMP_XXXXXX", data->body.decoded_fn);
+        if (!data->body.decoded_fd) {
             ci_debug_printf(1, "Enable to create temporary file to decode deflated file!\n");
+	    if (PASSONERROR)
+	        return CI_OK;
             return CI_ERROR;
         }
-        ci_debug_printf(6, "Scan from unzipped file %s\n", tmpfname);
-        lseek(body->fd, 0, SEEK_SET);
-        ret = virus_scan_inflate(body->fd, unzippedfd, MAX_OBJECT_SIZE);
-        fd_to_scan = unzippedfd;
+        ci_debug_printf(6, "Scan from unzipped file %s\n", data->body.decoded_fn);
+        if (data->body.type == AV_BT_FILE) {
+            lseek(data->body.store.file->fd, 0, SEEK_SET);
+            ret = virus_scan_inflate(data->body.store.file->fd, data->body.decoded_fd, MAX_OBJECT_SIZE);
+        } else {
+            assert(data->body.type == AV_BT_MEM);
+            ret = virus_scan_inflate_mem(data->body.store.mem->buf, data->body.store.mem->endpos, data->body.decoded_fd, MAX_OBJECT_SIZE);
+        }
     }
-    else 
 #endif
-        fd_to_scan = body->fd;
 
 #ifdef HAVE_ZLIB
     if (ret > 0) {
 #endif
-        lseek(fd_to_scan, 0, SEEK_SET);
         /*TODO Must check for errors*/
-        clamav_scan(fd_to_scan, &data->virus_info);
+        if (data->engine[0]) {
+            for (i=0; data->engine[i] != NULL && !data->virus_info.virus_found; i++) {
+                ci_debug_printf(4, "Use '%s' engine to scan data\n", data->engine[i]->name);
+                scan_status = data->engine[i]->scan(&data->body, &data->virus_info);
+                if (!scan_status) {
+                    ci_debug_printf(1, "Failed to scan web object\n");
+                    if (PASSONERROR)
+                        return CI_OK;
+                    return CI_ERROR;
+                }
+            }
+            build_reply_headers(req, &data->virus_info);
+        }
         ci_stat_uint64_inc(AV_SCAN_REQS, 1);
-        ci_stat_kbs_inc(AV_SCAN_BYTES, (int)body->endpos);
+        ci_stat_kbs_inc(AV_SCAN_BYTES, (int)av_body_data_size(&data->body));
 #ifdef HAVE_ZLIB
     }
     else if (ret == 0) /*Exceeds the maximum allowed size*/
@@ -670,43 +707,198 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
     else if (ret < 0) {
         /*Probably corrupted object. Handle it as virus*/
         err = virus_scan_inflate_error(ret);
+        if (PASSONERROR) {
+            ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Let it pass due to PassOnError\n", err);
+            return CI_OK;
+        }
+
         /*virus_scan_inflate_error always return a no null description*/
         ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Handle object as infected\n", err);
-        data->virus_info.virus_name = ci_buffer_alloc(strlen(err)+1);
-        if (data->virus_info.virus_name)
-            strcpy(data->virus_info.virus_name, err);
+        strncpy(data->virus_info.virus_name, err, AV_NAME_SIZE);
+        data->virus_info.virus_name[AV_NAME_SIZE - 1] = '\0';
         data->virus_info.virus_found = 1;
-    }
-
-    if (unzippedfd >= 0){
-        close(unzippedfd);
-        unlink(tmpfname);
     }
 #endif
     return CI_OK;
 }
 
+struct print_buf{
+    char *buf;
+    int size;
+    int count;
+    const char *sep;
+};
+
+
+
+static int print_violation(void *d, const void *item)
+{
+    /* We need to print :
+      Filename                  = TEXT
+      ThreadDescription         = TEXT
+      ProblemID                 = 1*DIGIT
+      ResolutionID              = 0 | 1 | 2
+     */
+    char buf[512];
+    int bytes;
+    struct print_buf *pb = (struct print_buf *) d;
+    av_virus_t *sdata = (av_virus_t *) item;
+
+    if (pb->size <=0)
+        return 1; /*Stop iterating*/
+
+    bytes = snprintf(buf, sizeof(buf), "\r\n\t-\r\n\t%s\r\n\t%d\r\n\t%d", 
+                     sdata->virus,
+                     sdata->problemID,
+                     sdata->action);
+    buf[sizeof(buf) - 1] = '\0';
+    bytes = (bytes < sizeof(buf) ? bytes : sizeof(buf));
+    if (bytes > pb->size)
+        return 1; /*Do not print, stop iterating*/
+    strcpy(pb->buf, buf);
+    pb->buf = pb->buf + bytes;
+    pb->size -= bytes;
+    ci_debug_printf(5, "Print violation : %s (next bytes :%d)\n", buf, pb->size);
+    return 0;
+}
+
+static void print_xviolations(char *buf, size_t buf_size,  av_virus_info_t *vinfo)
+{
+    int i;
+    struct print_buf pb;
+    ci_vector_t *viruses = vinfo->viruses;
+    if (buf_size < 128) return;  /*must have an enough big size*/
+
+    if (!viruses || viruses->count <=0 ) {
+        snprintf(buf, buf_size, "-");
+        return;
+    }
+   
+    i = snprintf(buf, buf_size, "%d", viruses->count);
+    pb.buf = buf+i;
+    pb.size = buf_size - i;
+
+    ci_vector_iterate(viruses, &pb, print_violation);
+    ci_debug_printf(5, "Print viruses header %s\n", buf);
+}
+
+static struct actions {
+    int act_code;
+    const char *act_str;
+} ACTIONS[] = {
+    {AV_NONE, "NO_ACTION"},
+    {AV_CLEAN, "DISINFECTED"},
+    {AV_FILE_REMOVED, "DELETED"},
+    {-1, NULL}
+};
+
+static const char *av_action(int code){
+    int i=0;
+    for(i=0; ACTIONS[i].act_str != NULL; i++) {
+        if (ACTIONS[i].act_code == code)
+            return ACTIONS[i].act_str;
+    }
+    return "-";
+}
+
+static int print_virus_item(void *d, const void *item)
+{
+    char buf[512];
+    int bytes;
+    struct print_buf *pb = (struct print_buf *) d;
+    av_virus_t *sdata = ( av_virus_t *) item;
+
+    if (pb->size <=0)
+        return 1; /*Stop iterating*/
+
+    bytes = snprintf(buf, sizeof(buf), "%s%s:%s:%s",
+                     (pb->count > 0 ? pb->sep : ""),
+                     sdata->virus, 
+                     sdata->type,
+                     av_action(sdata->action));
+    buf[sizeof(buf) - 1] = '\0';
+    bytes = (bytes < sizeof(buf) ? bytes : sizeof(buf));
+    if (bytes > pb->size)
+        return 1; /*Do not print, stop iterating*/
+    strcpy(pb->buf, buf);
+    pb->buf = pb->buf + bytes;
+    pb->size -= bytes;
+    pb->count++;
+    ci_debug_printf(5, "Print violation : %s (next bytes :%d)\n", buf, pb->size);
+    return 0;
+}
+
+int print_viruses_list(char *buf, size_t buf_size,  av_virus_info_t *vinfo, const char *sep)
+{
+    struct print_buf pb;
+    ci_vector_t *viruses = vinfo->viruses;
+    if (!viruses)
+        return 0;
+    pb.buf = buf;
+    pb.size = buf_size ;
+    pb.count = 0;
+    if (sep)
+        pb.sep = sep;
+    else
+        pb.sep = ", ";
+    ci_vector_iterate(viruses, &pb, print_virus_item);
+    ci_debug_printf(5, "Print viruses list %s\n", buf);
+    return (buf_size - pb.size);
+}
+
+void build_reply_headers(ci_request_t *req, av_virus_info_t *vinfo)
+{
+    char head[1024];
+
+    if (!vinfo)
+        return;
+
+    if (vinfo->virus_found && !ci_req_sent_data(req)) {
+        snprintf(head, sizeof(head), "X-Infection-Found: Type=0; Resolution=%d; Threat=%s;",
+                 (vinfo->disinfected ? 1 : 2),
+                 vinfo->virus_name[0] != '\0' ? vinfo->virus_name : "Unknown");
+        head[sizeof(head)-1] = '\0';
+        ci_icap_add_xheader(req, head);
+
+        if (vinfo->viruses && vinfo->viruses->count >0) {
+            strcpy(head, "X-Violations-Found: ");
+            print_xviolations((head+20), sizeof(head) - 20,  vinfo);
+            ci_icap_add_xheader(req, head);
+        }
+    }
+
+    if (vinfo->virus_found) {
+        print_viruses_list(head, sizeof(head), vinfo, ", ");
+        ci_request_set_str_attribute(req, "virus_scan:viruses-list", head);
+    }
+}
+
 /*******************************************************************************/
 /* Other  functions                                                            */
+
+static int istag_update_md5(void *ctx, const char *name, const void *engine_ptr)
+{
+    const char *sig;
+    av_engine_t *eng = (av_engine_t *) engine_ptr;
+    struct ci_MD5Context *mdctx = (struct ci_MD5Context *)ctx;
+    ci_debug_printf(5, "ISTAG update %s\n", name);
+    sig = eng->signature();
+    ci_MD5Update(mdctx, (const unsigned char *)sig, (size_t)strlen(sig));
+    return 0;
+}
 
 void set_istag(ci_service_xdata_t * srv_xdata)
 {
      char istag[SERVICE_ISTAG_SIZE + 1];
-     char str_version[64];
-     int cfg_version = 0;
-     unsigned int version, level;
-
-     clamav_get_versions(&level, &version, str_version, sizeof(str_version));
-     /*cfg_version maybe must set by user when he is changing 
-        the virus_scan configuration.... */
-     snprintf(istag, SERVICE_ISTAG_SIZE, "-%.3d-%s-%u%u",
-              cfg_version, str_version, level, version);
-     istag[SERVICE_ISTAG_SIZE] = '\0';
+     struct ci_MD5Context mdctx;
+     unsigned char digest[16];
+     assert(SERVICE_ISTAG_SIZE >= 25);
+     ci_MD5Init(&mdctx);
+     ci_registry_iterate(AV_ENGINES_REGISTRY, &mdctx, istag_update_md5);
+     ci_MD5Final(digest, &mdctx);
+     istag[0] = '-';
+     ci_base64_encode(digest, 16, istag+1, SERVICE_ISTAG_SIZE);
      ci_service_set_istag(srv_xdata, istag);
-
-     /*Also set the CLAMAV_VERSION*/
-     snprintf(CLAMAV_VERSION, CLAMAV_VERSION_SIZE-1, "%s/%d", str_version, version);
-     CLAMAV_VERSION[CLAMAV_VERSION_SIZE-1] = '\0';
 }
 
 int get_filetype(ci_request_t * req, int *iscompressed)
@@ -719,6 +911,7 @@ int get_filetype(ci_request_t * req, int *iscompressed)
 
 static int init_body_data(ci_request_t *req)
 {
+    int scan_from_mem, i;
     av_req_data_t *data = ci_service_data(req);
     assert(data);
 #ifdef VIRALATOR_MODE
@@ -728,7 +921,18 @@ static int init_body_data(ci_request_t *req)
      }
      else {
 #endif
-          data->body = ci_simple_file_new(data->args.sizelimit==0 ? 0 : data->max_object_size);
+         scan_from_mem = 1;
+         for (i=0; data->engine[i] != NULL; i++) {
+             /*If one of the engines does not support scanning from mem scan from file*/
+             if(!(data->engine[i]->options & AV_OPT_MEM_SCAN))
+                 scan_from_mem = 0;
+         }
+         
+         if (scan_from_mem &&
+             data->expected_size > 0 && data->expected_size < CI_BODY_MAX_MEM)
+             av_body_data_new(&(data->body), AV_BT_MEM, data->expected_size);
+         else
+             av_body_data_new(&(data->body), AV_BT_FILE, data->args.sizelimit==0 ? 0 : data->max_object_size);
           /*Icap server can not send data at the begining.
             The following call does not needed because the c-icap
             does not send any data if the ci_req_unlock_data is not called:*/
@@ -736,12 +940,12 @@ static int init_body_data(ci_request_t *req)
 
           /* Let ci_simple_file api to control the percentage of data.
              For now no data can send */
-          ci_simple_file_lock_all(data->body);
+          av_body_data_lock_all(&(data->body));
 #ifdef VIRALATOR_MODE
      }
 #endif
-     if (!data->body)           /*Memory allocation or something else ..... */
-          return CI_ERROR;
+     if (data->body.type == AV_BT_NONE)           /*Memory allocation or something else ..... */
+         return CI_ERROR;
 
      return CI_OK;
 }
@@ -837,11 +1041,6 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
      char buf[1024];
      const char *lang;
 
-     snprintf(buf, sizeof(buf), "X-Infection-Found: Type=0; Resolution=2; Threat=%s;",
-              data->virus_info.virus_name);
-     buf[sizeof(buf)-1] = '\0';
-     ci_icap_add_xheader(req, buf);
-
      if ( ci_http_response_headers(req))
           ci_http_response_reset_headers(req);
      else
@@ -889,6 +1088,14 @@ void av_file_types_destroy( struct av_file_types *ftypes)
     free(ftypes->scangroups);
     ftypes->scangroups = NULL;
 }
+
+int av_reload_istag()
+{
+    if (virus_scan_xdata)
+        set_istag(virus_scan_xdata);
+    return 1;
+}
+
 /***************************************************************************************/
 /* Parse arguments function - 
    Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed          
@@ -896,6 +1103,8 @@ void av_file_types_destroy( struct av_file_types *ftypes)
 void virus_scan_parse_args(av_req_data_t * data, char *args)
 {
      char *str;
+     size_t s;
+     char buf[512];
      if ((str = strstr(args, "allow204="))) {
           if (strncmp(str + 9, "on", 2) == 0)
                data->args.enable204 = 1;
@@ -920,17 +1129,50 @@ void virus_scan_parse_args(av_req_data_t * data, char *args)
           else if (strncmp(str + 5, "streamed", 8) == 0)
                data->args.mode = 4;
      }
+     if ((str = strstr(args, "engine="))) {
+         str += 7;
+         s = strcspn(str, "&,");
+         s = (s < (sizeof(buf) - 1) ? s : (sizeof(buf) - 1) );
+         strncpy(buf, str, s);
+         buf[s] = '\0';
+         const av_engine_t *engine = ci_registry_get_item(AV_ENGINES_REGISTRY, buf);
+         if (engine) {
+             data->engine[0] = engine;
+             data->engine[1] = NULL;
+         } else {
+             ci_debug_printf(2, "Requested engine '%s' is not available, using defaults\n", buf);
+         }
+     }
 }
 
-/****************************************************************************************/
-/*Commands functions                                                                    */
-void dbreload_command(const char *name, int type, const char **argv)
+void rebuild_content_length(ci_request_t *req, struct av_body_data *bd)
 {
-     ci_debug_printf(1, "Clamav virus database reload command received\n");
-     if (!clamav_reload_virusdb())
-          ci_debug_printf(1, "Clamav virus database reload command failed!\n");
-     if (virus_scan_xdata)
-          set_istag(virus_scan_xdata);
+    ci_off_t new_file_size = 0;
+    char buf[256];
+    ci_simple_file_t *body = NULL;
+    ci_membuf_t *memBuf = NULL;
+
+    if (bd->type == AV_BT_FILE) {
+        body = bd->store.file;
+        new_file_size = lseek(body->fd, 0, SEEK_END);
+        assert(body->readpos == 0);
+        ci_debug_printf(5, "Body data size changed, old size: %"  PRINTF_OFF_T 
+                        ", new size %"  PRINTF_OFF_T "\n",
+                        (CAST_OFF_T)body->endpos, (CAST_OFF_T)new_file_size);
+        body->endpos = new_file_size;
+        if (body->unlocked > body->endpos)
+            body->unlocked = body->endpos;
+    }
+    else if (bd->type == AV_BT_MEM) {
+        memBuf = bd->store.mem;
+        new_file_size = memBuf->endpos;
+    }
+    else /*do nothing....*/
+        return;
+
+    snprintf(buf, sizeof(buf), "Content-Length: %" PRINTF_OFF_T, (CAST_OFF_T)new_file_size);
+    ci_http_response_remove_header(req, "Content-Length");
+    ci_http_response_add_header(req, buf);
 }
 
 /****************************************************************************************/
@@ -996,30 +1238,20 @@ int cfg_SendPercentData(const char *directive, const char **argv, void *setdata)
      return 1;
 }
 
-
-
-int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata)
+int cfg_av_set_str_vector(const char *directive, const char **argv, void *setdata)
 {
-     struct stat stat_buf;
-     if (argv == NULL || argv[0] == NULL) {
-          ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
-          return 0;
-     }
-     if (stat(argv[0], &stat_buf) != 0 || !S_ISDIR(stat_buf.st_mode)) {
-          ci_debug_printf(1,
-                          "The directory %s (%s=%s) does not exist or is not a directory !!!\n",
-                          argv[0], directive, argv[0]);
-          return 0;
-     }
+    int i;
+    ci_str_vector_t **v = (ci_str_vector_t **) setdata;
+    if (*v == NULL)
+        *v = ci_str_vector_create(4096);
+    for (i = 0; argv[i] != NULL; i++)
+        (void)ci_str_vector_add(*v, argv[i]);
 
-     /*TODO:Try to write to the directory to see if it is writable ........
+    if (i > 0)
+        return 1;
 
-      */
-     CLAMAV_TMP = strdup(argv[0]);
-     ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
-     return 1;
+    return 0;
 }
-
 
 /**************************************************************/
 /* virus_scan templates  formating table                      */
@@ -1027,15 +1259,24 @@ int cfg_ClamAvTmpDir(const char *directive, const char **argv, void *setdata)
 int fmt_virus_scan_virusname(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
-    if (! data->virus_info.virus_name)
+    if (strcasecmp(param, "FullList") == 0)
+        return print_viruses_list(buf, (len > 1024 ? 1024 : len), &data->virus_info, "\n");
+    if (! data->virus_info.virus_found)
         return 0;
 
     return snprintf(buf, len, "%s", data->virus_info.virus_name);
 }
 
-int fmt_virus_scan_clamversion(ci_request_t *req, char *buf, int len, const char *param)
+
+int fmt_virus_scan_av_version(ci_request_t *req, char *buf, int len, const char *param)
 {
-    return snprintf(buf, len, "%s", CLAMAV_VERSION);
+    int i, bytes, ret;
+    av_req_data_t *data = ci_service_data(req);
+    for (i = 0, bytes = 0, ret = 0; data->engine[i] != NULL && len > 0; i++, len -= ret) {
+        ret = snprintf(buf + bytes, len, "%s%s-%s", (i > 0 ? ", " : ""), data->engine[i]->name, data->engine[i]->version_str());
+        bytes += ret; /*bytes may exceeds the input len but the caller will handle it*/
+    }
+    return bytes;
 }
 
 int fmt_virus_scan_http_url(ci_request_t *req, char *buf, int len, const char *param)

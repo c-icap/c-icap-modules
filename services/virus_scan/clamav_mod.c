@@ -19,25 +19,67 @@
 
 #include "virus_scan.h"
 #include "ci_threads.h"
+#include "commands.h"
 #include "mem.h"
+#include "module.h"
 #include "debug.h"
 #include "../../common.h"
 #include <clamav.h>
 
-#ifdef HAVE_FD_PASSING
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <errno.h>
-#endif
+#include <assert.h>
+
+static char *CLAMAV_TMP = NULL;
+static long int CLAMAV_MAXRECLEVEL = 5;
+static long int CLAMAV_MAX_FILES = 0;
+static ci_off_t CLAMAV_MAXFILESIZE = 100 * 1048576; /* maximal archived file size == 100 Mb */
+static ci_off_t CLAMAV_MAXSCANSIZE = 200 * 1048576;
+
+int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdata);
+static struct ci_conf_entry clamav_conf_variables[] = {
+     {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
+     {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
+/*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
+     {"ClamAvMaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
+      NULL},
+     {"ClamAvMaxScanSize", &CLAMAV_MAXSCANSIZE, ci_cfg_size_off, NULL},
+     {"ClamAvTmpDir", NULL, cfg_virus_scan_TmpDir, NULL},
+     {NULL, NULL, NULL, NULL}
+};
+
+int clamav_init(struct ci_server_conf *server_conf);
+int clamav_post_init(struct ci_server_conf *server_conf);
+void clamav_release();
+
+CI_DECLARE_MOD_DATA common_module_t module = {
+    "clamav_mod",
+    clamav_init,
+    clamav_post_init,
+    clamav_release,
+    clamav_conf_variables,
+};
+
+int clamav_scan(struct av_body_data *body,  av_virus_info_t *vinfo);
+const char *clamav_version();
+const char *clamav_signature();
+
+av_engine_t  clamav_engine = {
+    "clamav",
+    0x0, 
+    clamav_scan,
+    clamav_signature,
+    clamav_version
+};
 
 extern long int CLAMAV_MAXRECLEVEL;
 extern long int CLAMAV_MAX_FILES;
 extern ci_off_t CLAMAV_MAXFILESIZE;
 extern ci_off_t CLAMAV_MAXSCANSIZE;
 extern char *CLAMAV_TMP;
-extern int USE_CLAMD;
-extern char *CLAMD_SOCKET_PATH;
 
+#define CLAMAV_VERSION_SIZE 64
+static char CLAMAV_VERSION[CLAMAV_VERSION_SIZE];
+#define CLAMAV_SIGNATURE_SIZE SERVICE_ISTAG_SIZE + 1
+static char CLAMAV_SIGNATURE[CLAMAV_SIGNATURE_SIZE];
 
 #if defined(HAVE_LIBCLAMAV_09X) || defined(HAVE_LIBCLAMAV_095)
 #define CL_ENGINE struct cl_engine
@@ -58,23 +100,27 @@ struct virus_db *virusdb = NULL;
 struct virus_db *old_virusdb = NULL;
 ci_thread_mutex_t db_mutex;
 
-int clamd_init();
-int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_version, size_t str_version_len);
-int clamd_scan(int fd, av_virus_info_t *vinfo);
+void clamav_set_versions();
+int clamav_init_virusdb();
+int clamav_reload_virusdb();
+void clamav_destroy_virusdb();
 
-int clamav_init()
+void clamav_dbreload_command(const char *name, int type, const char **argv);
+int clamav_init(struct ci_server_conf *server_conf)
+{
+    register_command("clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
+                     clamav_dbreload_command);
+    return CI_OK;
+}
+
+int clamav_post_init(struct ci_server_conf *server_conf)
 {
     int ret;
-
-#ifdef HAVE_FD_PASSING
-    if (USE_CLAMD)
-        return clamd_init();
-#endif
 
     /*Else proceed loading the clamav virus database*/
     ret = clamav_init_virusdb();
      if (!ret)
-         return 0;
+         return CI_ERROR;
 
 #ifndef HAVE_LIBCLAMAV_095
      memset(&limits, 0, sizeof(struct cl_limits));
@@ -89,7 +135,7 @@ int clamav_init()
      limits.archivememlim = 0;  /* disable memory limit for bzip2 scanner */
 #else
      if(!virusdb) /* ??????? */
-	 return 0;
+	 return CI_ERROR;
      
      ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILES, CLAMAV_MAX_FILES); 
      if(ret != CL_SUCCESS)
@@ -104,7 +150,18 @@ int clamav_init()
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_RECURSION\n");
 #endif
-     return 1;
+
+     clamav_set_versions();
+     av_register_engine(&clamav_engine);
+     av_reload_istag();
+     return CI_OK;
+}
+
+void clamav_release()
+{
+    clamav_destroy_virusdb();
+    if (CLAMAV_TMP)
+        free(CLAMAV_TMP);
 }
 
 int clamav_init_virusdb()
@@ -185,11 +242,6 @@ int clamav_reload_virusdb()
      struct virus_db *vdb = NULL;
      int ret;
      unsigned int no = 0;
-
-#ifdef HAVE_FD_PASSING
-     if (USE_CLAMD)
-         return 1; /*Do nothing*/
-#endif
 
      ci_thread_mutex_lock(&db_mutex);
      if (old_virusdb) {
@@ -327,21 +379,20 @@ void clamav_destroy_virusdb()
      }
 }
 
-int clamav_scan(int fd, av_virus_info_t *vinfo)
+int clamav_scan(struct av_body_data *body, av_virus_info_t *vinfo)
 {
     CL_ENGINE *vdb;
     const char *virname;
     int ret, status;
     unsigned long scanned_data;
+    int fd = body->decoded_fd >= 0 ? body->decoded_fd : body->store.file->fd;
+    /*Currently clamav can scan only file data.*/
+    assert(body->type == AV_BT_FILE);
 
-#ifdef HAVE_FD_PASSING
-    if (USE_CLAMD)
-        return clamd_scan(fd, vinfo); 
-#endif
-
-    vinfo->virus_name = NULL;
+    vinfo->virus_name[0] = '\0';
     vinfo->virus_found = 0;
      vdb = get_virusdb();
+     lseek(fd, 0, SEEK_SET);
 #ifndef HAVE_LIBCLAMAV_095
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb, &limits,
@@ -354,18 +405,14 @@ int clamav_scan(int fd, av_virus_info_t *vinfo)
 
      status = 1;
      if (ret == CL_VIRUS) {
-         vinfo->virus_name = ci_buffer_alloc(strlen(virname)+1);
-         if (!vinfo->virus_name) {
-             ci_debug_printf(1, "clamav_scan: Error allocating buffer to write virus name %s!\n", virname);
-             status = 0;
-         }
-         else
-             strcpy(vinfo->virus_name, virname);
+         strncpy(vinfo->virus_name, virname, AV_NAME_SIZE);
+         vinfo->virus_name[AV_NAME_SIZE - 1] = '\0';
          vinfo->virus_found = 1;
+         ci_debug_printf(3, "clamav_mod: Virus '%s' detected\n", vinfo->virus_name);
      }
      else if (ret != CL_CLEAN) {
          ci_debug_printf(1,
-                         "srvClamAv module: An error occured while scanning the data\n");
+                         "clamav_mod: An error occured while scanning the data\n");
          status = 0;
      }
      release_virusdb(vdb);
@@ -378,11 +425,6 @@ int clamav_get_versions(unsigned int *level, unsigned int *version, char *str_ve
      char *s1, *s2;
      struct cl_cvd *d1;
      struct stat daily_stat;
-
-#ifdef HAVE_FD_PASSING
-     if (USE_CLAMD)
-         return clamd_get_versions(level, version, str_version, str_version_len);
-#endif
 
      /*instead of 128 should be strlen("/daily.inc/daily.info")+1*/
      daily_path = malloc(strlen(cl_retdbdir()) + 128);
@@ -429,231 +471,61 @@ int clamav_get_versions(unsigned int *level, unsigned int *version, char *str_ve
      return 1;
 }
 
-/**********************************/
-/*    Clamd support                            */
-#ifdef HAVE_FD_PASSING
-
-static int clamd_connect()
+void clamav_set_versions()
 {
-    struct sockaddr_un usa;
-    int sockd;
+    char str_version[64];
+    int cfg_version = 0;
+    unsigned int version, level;
 
-    if((sockd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-        ci_debug_printf(1, "clamd_connect: Can not create socket to connect to clamd server!\n" );
-	return -1;
-    }
+    clamav_get_versions(&level, &version, str_version, sizeof(str_version));
 
-    memset((void *)&usa, 0, sizeof(struct sockaddr_un));
-    usa.sun_family = AF_UNIX;
-    strncpy(usa.sun_path, CLAMD_SOCKET_PATH, sizeof(usa.sun_path));
-    usa.sun_path[sizeof(usa.sun_path) - 1] = '\0';
-    
-    if(connect(sockd, (struct sockaddr *)&usa, sizeof(struct sockaddr_un)) < 0) {
-        ci_debug_printf(1, "clamd_connect: Can not connect to clamd server!\n" );
-        close(sockd);
-	return -1;
-    }
+    /*Set clamav signature*/
+    snprintf(CLAMAV_SIGNATURE, CLAMAV_SIGNATURE_SIZE - 1, "-%.3d-%s-%u%u",
+             cfg_version, str_version, level, version);
+    CLAMAV_SIGNATURE[CLAMAV_SIGNATURE_SIZE - 1] = '\0';
 
-    return sockd;
+     /*set the clamav version*/
+     snprintf(CLAMAV_VERSION, CLAMAV_VERSION_SIZE - 1, "%s/%d", str_version, version);
+     CLAMAV_VERSION[CLAMAV_VERSION_SIZE - 1] = '\0';
 }
 
-static int clamd_command(int fd, const char *buf, size_t size)
+const char *clamav_version()
 {
-    int bytes = 0;
-    size_t remains = size;
-    while(remains) {
-        do {
-            bytes = send(fd, buf, remains, 0);
-        }  while (bytes == -1 && errno == EINTR);
+    return CLAMAV_VERSION;
+}
 
-        if (bytes <= 0)
-            return bytes;
+const char *clamav_signature()
+{
+    return CLAMAV_SIGNATURE;
+}
 
-        buf += bytes;
-        remains -= bytes;
+int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdata)
+{
+     struct stat stat_buf;
+     if (argv == NULL || argv[0] == NULL) {
+          ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
+          return 0;
      }
-    return size;
+     if (stat(argv[0], &stat_buf) != 0 || !S_ISDIR(stat_buf.st_mode)) {
+          ci_debug_printf(1,
+                          "The directory %s (%s=%s) does not exist or is not a directory !!!\n",
+                          argv[0], directive, argv[0]);
+          return 0;
+     }
+
+     /*TODO:Try to write to the directory to see if it is writable ........
+
+      */
+     CLAMAV_TMP = strdup(argv[0]);
+     ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
+     return 1;
 }
 
-static int clamd_response(int fd, char *buf, size_t size)
+void clamav_dbreload_command(const char *name, int type, const char **argv)
 {
-    char buffer[1024], *s;
-    int bytes, written, remains;
-    size --;  /*left 1 byte for '\0' */
-    remains = size;
-    s = buf;
-    do {
-        do {
-            bytes = recv(fd, s, remains, 0);
-        }  while (bytes == -1 && errno == EINTR);
-
-        if (bytes < 0)
-            return bytes;
-
-        if (bytes == 0) {
-            written = size - remains;
-            buf[written] = '\0';
-            return written; /*return read bytes*/
-        }
-
-        s += bytes; 
-        remains -= bytes;
-    } while(remains > 0 );
-
-    /*Our buffer is full. try read untill eof*/
-    do {
-         do {
-             bytes = recv(fd, buffer, 1024, 0);
-         }  while (bytes == -1 && errno == EINTR);
-    } while(bytes > 0);
-
-    if (bytes < 0)
-        return -1;
-
-    written = size - remains;
-    buf[written] = '\0';
-    return written; /*return read bytes*/
+     ci_debug_printf(1, "Clamav virus database reload command received\n");
+     if (!clamav_reload_virusdb()) {
+          ci_debug_printf(1, "Clamav virus database reload command failed!\n");
+     } else
+         av_reload_istag();
 }
-
-static int send_fd(int sockfd, int fd)
-{
-    struct msghdr mh;
-    struct cmsghdr cmh[2];
-    struct iovec iov;
-    int fd_to_send, ret;
-
-    if (clamd_command(sockfd, "zFILDES", 8) <= 0) {
-        return 0;
-    }
-
-    memset(&mh,0,sizeof(mh));
-    mh.msg_name = 0;
-    mh.msg_namelen = 0;
-    mh.msg_iov = &iov;
-    mh.msg_iovlen = 1;
-    mh.msg_control = (caddr_t)&cmh[0];
-    mh.msg_controllen = sizeof(cmh[0]) + sizeof(int);
-    mh.msg_flags = 0;
-    iov.iov_base = "";
-    iov.iov_len = 1;
-    cmh[0].cmsg_level = SOL_SOCKET;
-    cmh[0].cmsg_type = SCM_RIGHTS;
-    cmh[0].cmsg_len = sizeof(cmh[0]) + sizeof(int);
-    fd_to_send = dup(fd);
-    *(int *)&cmh[1] = fd_to_send;
-    ret = sendmsg(sockfd,&mh,0);
-    close(fd_to_send);
-
-    if (ret<0)
-        return 0;
-
-    return 1;
-}
-
-int clamd_init()
-{
-    /* try connect to see if clamd running*/
-    char buf[1024];
-    int ret;
-    int sockfd = clamd_connect();
-    if (!sockfd) {
-        ci_debug_printf(1, "clamd_init: Error while connecting to server\n");
-        return 0;
-    }
-
-    if (clamd_command(sockfd, "zPING", 6) <= 0) {
-        ci_debug_printf(1, "clamd_init: Error while sending command to clamd server\n");
-        close(sockfd);
-        return 0;
-    }
-    ret = clamd_response(sockfd, buf, 1024);
-
-    if (ret <= 0 || strcmp(buf, "PONG") != 0) {
-        ci_debug_printf(1, "clamd_init: Not valid response from server: %s\n", buf);
-        close(sockfd);
-        return 0;
-    }
-
-    close(sockfd);
-    return 1;
-}
-
-int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_version, size_t str_version_len)
-{
-    char buf[1024];
-    int ret, v1, v2, v3;
-    int sockfd = clamd_connect();
-    if (sockfd < 0)
-        return 0;
-
-    if (clamd_command(sockfd, "zVERSION", 9) <= 0) {
-        ci_debug_printf(1, "clamd_get_versions: Error while sending command to clamd server\n");
-        close(sockfd);
-        return 0;
-    }
-    ret = clamd_response(sockfd, buf, 1024);
-    if (ret <= 0) { //error
-        ci_debug_printf(1, "clamd_get_versions: Error reading response from clamd server\n");
-        close(sockfd);
-        return 0;
-    }
-
-    ret = sscanf(buf, "ClamAV %d.%d.%d/%d/", &v1, &v2, &v3, version);
-    if (ret != 4) {
-        ci_debug_printf(1, "clamd_get_versions: parse error. Response string: %s\n", buf);
-        close(sockfd);
-        return 0;
-    }
-    snprintf(str_version, str_version_len, "%d%d%d", v1,v2,v3);
-    str_version[str_version_len - 1] = '\0';
-    *level = 0; /*We are not able to retrieve level*/
-
-    close(sockfd);
-    return 1;
-}
-
-int clamd_scan(int fd, av_virus_info_t *vinfo)
-{
-    char resp[1024], *s, *f, *v;
-    int sockfd, ret;
-
-    vinfo->virus_name = NULL;
-    vinfo->virus_found = 0;
-
-    sockfd = clamd_connect();
-    if (sockfd < 0)
-        return 0;
-
-    ret = send_fd(sockfd, fd);
-    ret = clamd_response(sockfd, resp, sizeof(resp));
-
-    s = strchr(resp, ':');
-    if (!s) {
-        ci_debug_printf(1, "clamd_scan: parse error. Response string: %s", resp);
-        close(sockfd);
-        return 0;
-    }
-    s++; /*point after ':'*/
-    while (*s == ' ')  s++;
-
-    if ((f = strstr(s, "FOUND"))) {
-        /* A virus found */
-        vinfo->virus_found = 1;
-       #define VIRUS_NAME_SIZE 128
-        vinfo->virus_name =  ci_buffer_alloc(VIRUS_NAME_SIZE);
-        if (!vinfo->virus_name) {
-            ci_debug_printf(1, "clamd_scan: Error allocating buffer to write virus name %s!\n", s);
-            close(sockfd);
-            return 0;
-        }
-        for ( v = vinfo->virus_name; s != f && (v - vinfo->virus_name)< VIRUS_NAME_SIZE; v++, s++)
-            *v = *s;
-        /*There is a space before "FOUND" and maybe v points after the end of string*/
-        *(v - 1) = '\0';
-    }
-
-    close(sockfd);
-    return 1;
-}
-
-#endif  /*HAVE_FD_PASSING*/

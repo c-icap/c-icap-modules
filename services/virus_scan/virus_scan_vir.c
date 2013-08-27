@@ -65,23 +65,19 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
           temp_file_name = ci_buffer_alloc(strlen(data->requested_filename) + 1);
           if(url_decoder(data->requested_filename, temp_file_name, strlen(data->requested_filename) + 1))
           {
-               if (NULL ==
-                   (data->body =
-                    ci_simple_file_named_new(VIR_SAVE_DIR,
-                                             temp_file_name, 0)))
-                    data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+               av_body_data_named(&data->body, VIR_SAVE_DIR, data->requested_filename);
+               if (data->body.type == AV_BT_NONE)
+                    av_body_data_named(&data->body, VIR_SAVE_DIR, NULL);
           }
           else { /* This should NEVER happen */
-               if (NULL ==
-                   (data->body =
-                    ci_simple_file_named_new(VIR_SAVE_DIR,
-                                             data->requested_filename, 0)))
-                    data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+               av_body_data_named(&data->body, VIR_SAVE_DIR, data->requested_filename);
+               if (data->body.type == AV_BT_NONE)
+                    av_body_data_named(&data->body, VIR_SAVE_DIR, NULL);
           }
           ci_buffer_free(temp_file_name);
      }
      else {
-	 data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+         av_body_data_named(&data->body, VIR_SAVE_DIR, NULL);
      }
 
      /*Remove old HTTP response headers and replace with our*/
@@ -152,7 +148,7 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
      ci_debug_printf(6,
                      "Downloaded %" PRINTF_OFF_T " bytes from %" PRINTF_OFF_T
                      " of data<br>",
-                     (CAST_OFF_T) ci_simple_file_size(((av_req_data_t *) data)->body),
+                     (CAST_OFF_T) av_body_data_size(&(((av_req_data_t *) data)->body)),
                      (CAST_OFF_T) ((av_req_data_t *) data)->expected_size);
      
      error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_PROGRESS",
@@ -173,21 +169,23 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
 void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 {
      ci_membuf_t *error_page;
-
-     if (data->virus_info.virus_found && data->body) {
+     if (data->body.type == AV_BT_NONE)
+         return;
+     assert(data->body.type == AV_BT_FILE);
+     if (data->virus_info.virus_found && !data->virus_info.disinfected) {
 	  error_page = ci_txt_template_build_content(req, "virus_scan", 
 						     "VIR_MODE_VIRUS_FOUND",
 						     virus_scan_format_table);
 	  data->error_page = error_page;
           data->vir_mode_state = VIR_TAIL;
-	  fchmod(data->body->fd, 0);
+	  fchmod(data->body.store.file->fd, 0);
      }
-     else if (data->body) {
+     else {
 	  error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_TAIL",
 						     virus_scan_format_table);
 	  data->error_page = error_page;
 	  data->vir_mode_state = VIR_TAIL;
-          fchmod(data->body->fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+          fchmod(data->body.store.file->fd, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
      }
 }
 
@@ -308,10 +306,14 @@ int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *p
     char *filename, *str;
     av_req_data_t *data = ci_service_data(req);
 
-    if (! data->body || ! data->body->filename)
+    if (data->body.type == AV_BT_NONE)
+         return 0;
+    assert(data->body.type == AV_BT_FILE);
+    
+    if (! data->body.store.file->filename)
         return 0;
 
-    filename = data->body->filename;
+    filename = data->body.store.file->filename;
     if((str = strrchr(filename, '/')) != NULL)
         filename = str + 1;
 
@@ -321,6 +323,7 @@ int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *p
 int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, const char *param)
 {
     av_req_data_t *data = ci_service_data(req);
+
     if (! data->requested_filename)
         return 0;
     

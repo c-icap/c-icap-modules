@@ -40,6 +40,9 @@ Description:
 			the virus_scan.MaxObjectSize value used.
 		StartSendingDataAfter Overwrite the virus_scan.StartSendingDataAfter
 			value for requests matching given profile.
+		DefaultEngine Space separated list of the antivirus engines to
+			use if no engine has selected using ICAP service
+			arguments
 
 TAG: virus_scan.ProfileAccess
 Format: virus_scan.ProfileAccess profile_name acl1 [acl2 ...]

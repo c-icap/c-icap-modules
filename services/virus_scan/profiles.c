@@ -35,6 +35,7 @@ static struct av_req_profile *av_req_profile_create(const char *name) {
     aprof->send_percent_data = -1;
     aprof->start_send_after = -1;
     aprof ->max_object_size = 0;
+    aprof->engines[0] = NULL;
     aprof->access_list = NULL;
     av_file_types_init(&aprof->scan_file_types);
     aprof->next = NULL;
@@ -101,6 +102,7 @@ int cfg_SendPercentData(const char *directive, const char **argv, void *setdata)
 /*******/
 int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, const char **args) 
 {
+    int i, k;
     if (!prof || !param || !args)
         return 0;
 
@@ -124,6 +126,16 @@ int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, 
     }
     else if (strcmp(param, "StartSendingDataAfter") ==0) {
         return ci_cfg_size_off(param, args, &prof->start_send_after);
+    }
+    else if (strcmp(param, "DefaultEngine") ==0) {
+        for (i = 0, k = 0; args[i] != NULL && i < AV_MAX_ENGINES; i++) {
+            prof->engines[k] = ci_registry_get_item(AV_ENGINES_REGISTRY, args[i]);
+            if (prof->engines[k]) k++;
+            else {
+                ci_debug_printf(1, "WARNING! Wrong antivirus engine name: %s\n", args[i]);
+            }
+        }
+        prof->engines[k] = NULL;
     }
 
     return 0;
