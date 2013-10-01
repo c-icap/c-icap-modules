@@ -17,6 +17,7 @@
  */
 
 #include "c_icap/c-icap.h"
+#include "c_icap/body.h"
 #include "c_icap/mem.h"
 #include "c_icap/debug.h"
 #include "../../common.h"
@@ -35,15 +36,15 @@ static void free_a_buffer(void *op, void *ptr){
     ci_buffer_free(ptr);
 }
 
-static int do_file_write(int fd, const void *buf, size_t count) {
+static int do_file_write(ci_simple_file_t *fout, const void *buf, size_t count) {
     int bytes, to_write;
     errno = 0;
     to_write = count;
     do {
-        bytes = write(fd, buf, to_write);
+        bytes = ci_simple_file_write(fout, buf, (int)count, 0);
         if (bytes > 0) 
             to_write -= bytes;
-    }while ( (bytes < 0 && errno == EINTR) || to_write > 0);
+    }while ( bytes >= 0 || to_write > 0);
 
     return count;
 }
@@ -89,7 +90,7 @@ const char *virus_scan_inflate_error(int err)
   -1 on error
   0 if max_size reached.
  */
-int virus_scan_inflate(int fin, int fout, ci_off_t max_size) {
+int virus_scan_inflate(int fin, ci_simple_file_t *fout, ci_off_t max_size) {
     int ret, retriable;
     unsigned have, written;
     ci_off_t insize, outsize;
@@ -170,12 +171,13 @@ virus_scan_inflate_retry:
         /* done when inflate() says it's done */
     } while (ret != Z_STREAM_END);
 
+    ci_simple_file_write(fout, NULL, 0, 1);
     /* clean up and return */
     inflateEnd(&strm);
     return ret == Z_STREAM_END ? INFL_OK : INFL_ERR_CORRUPT;
 }
 
-int virus_scan_inflate_mem(void *mem, size_t mem_size, int fout, ci_off_t max_size){
+int virus_scan_inflate_mem(void *mem, size_t mem_size, ci_simple_file_t *fout, ci_off_t max_size){
     int ret;
     unsigned have, written;
     ci_off_t insize, outsize;
@@ -231,6 +233,7 @@ int virus_scan_inflate_mem(void *mem, size_t mem_size, int fout, ci_off_t max_si
         }
     } while (strm.avail_out == 0);
 
+    ci_simple_file_write(fout, NULL, 0, 1);
     /* clean up and return */
     inflateEnd(&strm);
     return ret == Z_STREAM_END ? INFL_OK : INFL_ERR_CORRUPT;

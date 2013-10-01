@@ -34,8 +34,7 @@ void av_body_data_new(struct av_body_data *bd, enum av_body_type type,  int size
     else
         bd->type = AV_BT_NONE;
     bd->buf_exceed = 0;
-    bd->decoded_fd = -1;
-    bd->decoded_fn[0] = '\0';
+    bd->decoded = NULL;
 }
 
 void av_body_data_named(struct av_body_data *bd, const char *dir, const char *name)
@@ -63,9 +62,9 @@ void av_body_data_destroy(struct av_body_data *body)
         body->store.mem = NULL;
         body->type = AV_BT_NONE;
     }
-    if (body->decoded_fd >=0 && body->decoded_fn[0] != '\0') {
-         close(body->decoded_fd);
-         unlink(body->decoded_fn);
+    if (body->decoded) {
+        ci_simple_file_destroy(body->decoded);
+        body->decoded = NULL;
     }
 }
 
@@ -79,9 +78,9 @@ void av_body_data_release(struct av_body_data *body)
     ci_simple_file_release(body->store.file);
     body->store.file = NULL;
     body->type = AV_BT_NONE;
-    if (body->decoded_fd >=0 && body->decoded_fn[0] != '\0') {
-        close(body->decoded_fd);
-        unlink(body->decoded_fn);
+    if (body->decoded) {
+        ci_simple_file_destroy(body->decoded);
+        body->decoded = NULL;
     }
 }
 

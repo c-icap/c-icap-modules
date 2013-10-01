@@ -29,8 +29,7 @@ struct av_body_data {
         ci_membuf_t *mem;
     } store;
     int buf_exceed;
-    int decoded_fd;
-    char decoded_fn[CI_FILENAME_LEN+1];
+    ci_simple_file_t *decoded;
     enum av_body_type type;
 };
 

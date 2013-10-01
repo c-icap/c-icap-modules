@@ -18,6 +18,7 @@ struct av_req_profile;
 #endif
 
 #define AV_ENGINES_REGISTRY "virus_scan::engines"
+#define AV_RELOAD_ISTAG     "virus_scan::reloadistag"
 
 #define AV_NAME_SIZE 64
 enum av_actions {AV_NONE = 0, AV_CLEAN, AV_FILE_REMOVED};
@@ -42,7 +43,8 @@ typedef struct av_virus {
 typedef struct av_engine {
     const char *name;
     uint64_t  options;
-    int (*scan)(struct av_body_data *body, av_virus_info_t *vinfo);
+    int (*scan_membuf)(ci_membuf_t *body, av_virus_info_t *vinfo);
+    int (*scan_simple_file)(ci_simple_file_t *body, av_virus_info_t *vinfo);
     const char *(*signature)();
     const char *(*version_str)();
 } av_engine_t;
@@ -99,7 +101,7 @@ struct av_req_profile {
 enum {NO_DECISION = -1, NO_SCAN=0,SCAN,VIR_SCAN};
 
 #define av_register_engine(engine) ci_registry_add_item(AV_ENGINES_REGISTRY, (engine)->name, engine)
-CI_DECLARE_MOD_DATA int av_reload_istag();
+#define av_reload_istag() ci_command_schedule_on(AV_RELOAD_ISTAG, NULL, 0)
 
 #ifdef VIRALATOR_MODE
 
@@ -122,7 +124,7 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req);
 #endif
 
 /*Decoding functions*/
-int virus_scan_inflate(int fin, int fout, ci_off_t max_size);
-int virus_scan_inflate_mem(void *mem, size_t mem_size, int fout, ci_off_t max_size);
+int virus_scan_inflate(int fin, ci_simple_file_t *fout, ci_off_t max_size);
+int virus_scan_inflate_mem(void *mem, size_t mem_size, ci_simple_file_t *fout, ci_off_t max_size);
 const char *virus_scan_inflate_error(int err);
 #endif

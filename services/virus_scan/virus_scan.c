@@ -136,6 +136,7 @@ int cfg_av_req_profile_access(const char *directive, const char **argv, void *se
 /*General functions*/
 static int get_filetype(ci_request_t * req, int *encoding);
 static void set_istag(ci_service_xdata_t * srv_xdata);
+static void cmd_reload_istag(const char *name, int type, void *data);
 static int init_body_data(ci_request_t *req);
 
 /*It is dangerous to pass directly fields of the limits structure in conf_variables,
@@ -226,6 +227,7 @@ int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
     set_istag(virus_scan_xdata);
+    register_command_extend(AV_RELOAD_ISTAG, ONDEMAND_CMD, NULL, cmd_reload_istag);
     return CI_OK;
 }
 
@@ -663,20 +665,20 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
     */
 #ifdef HAVE_ZLIB
     if (data->encoded == CI_ENCODE_DEFLATE) {
-        data->body.decoded_fd = ci_mktemp_file(CI_TMPDIR, "CI_TMP_XXXXXX", data->body.decoded_fn);
-        if (!data->body.decoded_fd) {
+        data->body.decoded = ci_simple_file_new(0);
+        if (!data->body.decoded) {
             ci_debug_printf(1, "Enable to create temporary file to decode deflated file!\n");
 	    if (PASSONERROR)
 	        return CI_OK;
             return CI_ERROR;
         }
-        ci_debug_printf(6, "Scan from unzipped file %s\n", data->body.decoded_fn);
+        ci_debug_printf(6, "Scan from unzipped file %s\n", data->body.decoded->filename);
         if (data->body.type == AV_BT_FILE) {
             lseek(data->body.store.file->fd, 0, SEEK_SET);
-            ret = virus_scan_inflate(data->body.store.file->fd, data->body.decoded_fd, MAX_OBJECT_SIZE);
+            ret = virus_scan_inflate(data->body.store.file->fd, data->body.decoded, MAX_OBJECT_SIZE);
         } else {
             assert(data->body.type == AV_BT_MEM);
-            ret = virus_scan_inflate_mem(data->body.store.mem->buf, data->body.store.mem->endpos, data->body.decoded_fd, MAX_OBJECT_SIZE);
+            ret = virus_scan_inflate_mem(data->body.store.mem->buf, data->body.store.mem->endpos, data->body.decoded, MAX_OBJECT_SIZE);
         }
     }
 #endif
@@ -688,7 +690,14 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
         if (data->engine[0]) {
             for (i=0; data->engine[i] != NULL && !data->virus_info.virus_found; i++) {
                 ci_debug_printf(4, "Use '%s' engine to scan data\n", data->engine[i]->name);
-                scan_status = data->engine[i]->scan(&data->body, &data->virus_info);
+                if (data->body.decoded) {
+                    scan_status = data->engine[i]->scan_simple_file(data->body.decoded, &data->virus_info);
+                    if (data->virus_info.disinfected) /*we can not disinfect encoded files yet...*/
+                        data->virus_info.disinfected = 0;
+                } else if (data->body.type == AV_BT_FILE)
+                    scan_status = data->engine[i]->scan_simple_file(data->body.store.file, &data->virus_info);
+                else // if (data->body.type == AV_BT_MEM)
+                    scan_status = data->engine[i]->scan_membuf(data->body.store.mem, &data->virus_info);
                 if (!scan_status) {
                     ci_debug_printf(1, "Failed to scan web object\n");
                     if (PASSONERROR)
@@ -924,7 +933,7 @@ static int init_body_data(ci_request_t *req)
          scan_from_mem = 1;
          for (i=0; data->engine[i] != NULL; i++) {
              /*If one of the engines does not support scanning from mem scan from file*/
-             if(!(data->engine[i]->options & AV_OPT_MEM_SCAN))
+             if(!(data->engine[i]->options & AV_OPT_MEM_SCAN) || data->engine[i]->scan_membuf == NULL)
                  scan_from_mem = 0;
          }
          
@@ -1089,11 +1098,11 @@ void av_file_types_destroy( struct av_file_types *ftypes)
     ftypes->scangroups = NULL;
 }
 
-int av_reload_istag()
+static void cmd_reload_istag(const char *name, int type, void *data)
 {
+    ci_debug_printf(1, "recomputing istag ...\n");
     if (virus_scan_xdata)
         set_istag(virus_scan_xdata);
-    return 1;
 }
 
 /***************************************************************************************/
@@ -1154,14 +1163,8 @@ void rebuild_content_length(ci_request_t *req, struct av_body_data *bd)
 
     if (bd->type == AV_BT_FILE) {
         body = bd->store.file;
-        new_file_size = lseek(body->fd, 0, SEEK_END);
         assert(body->readpos == 0);
-        ci_debug_printf(5, "Body data size changed, old size: %"  PRINTF_OFF_T 
-                        ", new size %"  PRINTF_OFF_T "\n",
-                        (CAST_OFF_T)body->endpos, (CAST_OFF_T)new_file_size);
-        body->endpos = new_file_size;
-        if (body->unlocked > body->endpos)
-            body->unlocked = body->endpos;
+        new_file_size = body->endpos;
     }
     else if (bd->type == AV_BT_MEM) {
         memBuf = bd->store.mem;
@@ -1169,6 +1172,9 @@ void rebuild_content_length(ci_request_t *req, struct av_body_data *bd)
     }
     else /*do nothing....*/
         return;
+
+    ci_debug_printf(5, "Body data size changed to new size %"  PRINTF_OFF_T "\n",
+                    (CAST_OFF_T)new_file_size);
 
     snprintf(buf, sizeof(buf), "Content-Length: %" PRINTF_OFF_T, (CAST_OFF_T)new_file_size);
     ci_http_response_remove_header(req, "Content-Length");

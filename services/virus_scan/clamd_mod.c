@@ -1,8 +1,9 @@
 #include "virus_scan.h"
-#include "commands.h"
-#include "mem.h"
-#include "module.h"
-#include "debug.h"
+#include "c_icap/commands.h"
+#include "c_icap/mem.h"
+#include "c_icap/module.h"
+#include "c_icap/debug.h"
+#include "c_icap/body.h"
 #include "../../common.h"
 
 #include <assert.h>
@@ -35,14 +36,15 @@ CI_DECLARE_MOD_DATA common_module_t module = {
 };
 
 
-int clamd_scan(struct av_body_data *body, av_virus_info_t *vinfo);
+int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo);
 const char *clamd_version();
 const char *clamd_signature();
 
 av_engine_t  clamd_engine = {
     "clamd",
-    0x0, 
-    clamd_scan,
+    0x0,
+    NULL,
+    clamd_scan_simple_file,
     clamd_signature,
     clamd_version
 };
@@ -250,13 +252,11 @@ int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_ver
     return 1;
 }
 
-int clamd_scan(struct av_body_data *body, av_virus_info_t *vinfo)
+int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 {
     char resp[1024], *s, *f, *v;
     int sockfd, ret, status;
-    int fd = body->decoded_fd >= 0 ? body->decoded_fd : body->store.file->fd;
-    /*clamd can scan only file data.*/
-    assert(body->type == AV_BT_FILE);
+    int fd = body->fd;
 
     vinfo->virus_name[0] = '\0';
     vinfo->virus_found = 0;

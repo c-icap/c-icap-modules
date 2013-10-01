@@ -18,11 +18,11 @@
 
 
 #include "virus_scan.h"
-#include "ci_threads.h"
-#include "commands.h"
-#include "mem.h"
-#include "module.h"
-#include "debug.h"
+#include "c_icap/ci_threads.h"
+#include "c_icap/commands.h"
+#include "c_icap/mem.h"
+#include "c_icap/module.h"
+#include "c_icap/debug.h"
 #include "../../common.h"
 #include <clamav.h>
 
@@ -58,14 +58,15 @@ CI_DECLARE_MOD_DATA common_module_t module = {
     clamav_conf_variables,
 };
 
-int clamav_scan(struct av_body_data *body,  av_virus_info_t *vinfo);
+int clamav_scan_simple_file(ci_simple_file_t *body,  av_virus_info_t *vinfo);
 const char *clamav_version();
 const char *clamav_signature();
 
 av_engine_t  clamav_engine = {
     "clamav",
-    0x0, 
-    clamav_scan,
+    0x0,
+    NULL,
+    clamav_scan_simple_file,
     clamav_signature,
     clamav_version
 };
@@ -379,15 +380,13 @@ void clamav_destroy_virusdb()
      }
 }
 
-int clamav_scan(struct av_body_data *body, av_virus_info_t *vinfo)
+int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 {
     CL_ENGINE *vdb;
     const char *virname;
     int ret, status;
     unsigned long scanned_data;
-    int fd = body->decoded_fd >= 0 ? body->decoded_fd : body->store.file->fd;
-    /*Currently clamav can scan only file data.*/
-    assert(body->type == AV_BT_FILE);
+    int fd = body->fd;
 
     vinfo->virus_name[0] = '\0';
     vinfo->virus_found = 0;
