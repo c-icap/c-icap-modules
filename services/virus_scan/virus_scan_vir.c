@@ -42,34 +42,55 @@ extern struct ci_fmt_entry virus_scan_format_table [];
 char *virus_scan_compute_name(ci_request_t * req);
 /*char *construct_url(char *strformat, char *filename, char *user);*/
 
+/*Declare the undocumented c-icap library function url_decoder*/
+int url_decoder(const char *input,char *output, int output_len);
 
 void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
 {
      ci_membuf_t *error_page;
      char buf[512];
      const char *lang;
-     ci_http_response_reset_headers(req);
-     ci_http_response_add_header(req, "HTTP/1.1 200 OK");
-     ci_http_response_add_header(req, "Server: C-ICAP/virus_scan");
-     ci_http_response_add_header(req, "Connection: close");
-     ci_http_response_add_header(req, "Content-Type: text/html");
+     void *temp_file_name;
 
+     /*Initilize the viralator mode*/
      data->last_update = time(NULL);
-     data->requested_filename = NULL;
      data->vir_mode_state = VIR_ZERO;
-
-
+     /*Try to find out the name of downloaded object.
+       The HTTP response headers used, so virus_scan_compute_name should
+       called before destroy the HTTP response headers.
+      */
      if ((data->requested_filename = virus_scan_compute_name(req)) != NULL) {
-          if (NULL ==
-              (data->body =
-               ci_simple_file_named_new(VIR_SAVE_DIR,
-                                        data->requested_filename, 0)))
-	      data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+          /* data->requested_filename may contain escaped characters, if so we must
+             remove them in the file name, but not requested file name.
+          */
+          temp_file_name = ci_buffer_alloc(strlen(data->requested_filename) + 1);
+          if(url_decoder(data->requested_filename, temp_file_name, strlen(data->requested_filename) + 1))
+          {
+               if (NULL ==
+                   (data->body =
+                    ci_simple_file_named_new(VIR_SAVE_DIR,
+                                             temp_file_name, 0)))
+                    data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+          }
+          else { /* This should NEVER happen */
+               if (NULL ==
+                   (data->body =
+                    ci_simple_file_named_new(VIR_SAVE_DIR,
+                                             data->requested_filename, 0)))
+                    data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
+          }
+          ci_buffer_free(temp_file_name);
      }
      else {
 	 data->body = ci_simple_file_named_new(VIR_SAVE_DIR, NULL, 0);
      }
 
+     /*Remove old HTTP response headers and replace with our*/
+     ci_http_response_reset_headers(req);
+     ci_http_response_add_header(req, "HTTP/1.1 200 OK");
+     ci_http_response_add_header(req, "Server: C-ICAP/virus_scan");
+     ci_http_response_add_header(req, "Connection: close");
+     ci_http_response_add_header(req, "Content-Type: text/html");
 
      error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_HEAD",
 						virus_scan_format_table);
@@ -175,22 +196,33 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
 char *virus_scan_compute_name(ci_request_t * req)
 {
      char *abuf;
-     const char *str, *filename, *last_delim;
+     const char *str, *filename, *args, *content_disposition;
      int namelen;
-     if ((filename = ci_http_response_get_header(req, "Location")) != NULL) {
+
+     content_disposition = ci_http_response_get_header(req, "Content-Disposition");
+     if (content_disposition && (filename = strstr(content_disposition, "filename="))) {
+          filename = filename + 9;
           if ((str = strrchr(filename, '/'))) {
                filename = str + 1;
-               if ((str = strrchr(filename, '?')))
-                    filename = str + 1;
           }
-          if (filename != '\0') {
-	      abuf = ci_buffer_alloc(strlen(filename) + 1);
-	      strcpy(abuf, filename);
-	      return abuf;
-	       
-          } else
-               return NULL;
+          if ((str = strrchr(filename, ';'))) {
+               namelen = str - filename;
+          }
+          else namelen = strlen(filename);
+          /* Strip quotes as they can cause problems */
+          if (filename[0] == '\"' && filename[namelen - 1] == '\"') {
+               filename++;
+               namelen -= 2;
+          }
+          if (filename[0] != '\0') {
+               abuf = ci_buffer_alloc((namelen + 1) * sizeof(char));
+               strncpy(abuf, filename, namelen);
+               abuf[namelen] = '\0';
+               return abuf;
+          }
+          /* If we do not have a valid content-disposition with a filename section, we should fall through and do our best to have a file name */
      }
+
      /*if we are here we are going to compute name from request headers if exists.... */
      if (!(str = ci_http_request(req)))
           return NULL;
@@ -201,27 +233,24 @@ char *virus_scan_compute_name(ci_request_t * req)
      if (!(str = strchr(str, ' ')))
           return NULL;
 
-     str = str + 1;
+     while (*str == ' ') str++;
      filename = str;
-     last_delim = NULL;
-     while (*str != '\0' && *str != ' ') {
-          if (*str == '/' || *str == '?')
-               last_delim = str;
-          str += 1;
-     }
-     if (last_delim != NULL)
-          filename = last_delim + 1;
+
+     if(NULL == (args = strchr(filename, '?')))
+          args = strchr(filename, ' ');
+
+     for (str = args; *str != '/' && str != filename; --str);
+     if(*str == '/') str++;
 
      if (filename == str)       /*for example the requested position is http:// */
           return NULL;
 
-     last_delim = str;
-     namelen = last_delim - filename;
+     namelen = args - str;
      if (namelen >= CI_FILENAME_LEN)
           namelen = CI_FILENAME_LEN - 1;
 
-     abuf = ci_buffer_alloc(namelen * sizeof(char) + 1);
-     strncpy(abuf, filename, namelen);
+     abuf = ci_buffer_alloc((namelen + 1) * sizeof(char));
+     strncpy(abuf, str, namelen);
      abuf[namelen] = '\0';
      return abuf;
 }
@@ -277,12 +306,17 @@ char *construct_url(char *strformat, char *filename, char *user)
 
 int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *param)
 {
+    char *filename, *str;
     av_req_data_t *data = ci_service_data(req);
 
     if (! data->body || ! data->body->filename)
         return 0;
-    
-    return snprintf(buf, len, "%s", data->body->filename);
+
+    filename = data->body->filename;
+    if((str = strrchr(filename, '/')) != NULL)
+        filename = str + 1;
+
+    return snprintf(buf, len, "%s", filename);
 }
 
 int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, const char *param)
