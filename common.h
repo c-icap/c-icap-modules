@@ -53,4 +53,8 @@
 #include <stdint.h>
 #endif
 
+#ifndef HAVE_STRCASESTR
+#define strcasestr(str, find) ci_strcasestr(str, find)
+#endif
+
 #endif
