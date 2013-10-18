@@ -347,6 +347,7 @@ fi
 AC_MSG_CHECKING([if fds can send through unix sockets])
 AC_TRY_COMPILE(
        [
+      #include <stdlib.h>
       #include <sys/socket.h>
       #include <sys/un.h>
        ],
@@ -354,7 +355,7 @@ AC_TRY_COMPILE(
       int main(int argc, char **argv) {
              struct msghdr mh;
              struct cmsghdr cmh;
-             mh.msg_control = (caddr_t) NULL;
+             mh.msg_control = NULL;
              mh.msg_controllen = 0;
              cmh.cmsg_level = SOL_SOCKET;
              cmh.cmsg_type = SCM_RIGHTS;

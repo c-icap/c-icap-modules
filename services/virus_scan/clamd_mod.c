@@ -224,7 +224,7 @@ static int send_fd(int sockfd, int fd)
     mh.msg_namelen = 0;
     mh.msg_iov = &iov;
     mh.msg_iovlen = 1;
-    mh.msg_control = (caddr_t)&cmh[0];
+    mh.msg_control = (void *)&cmh[0];
     mh.msg_controllen = sizeof(cmh[0]) + sizeof(int);
     mh.msg_flags = 0;
     iov.iov_base = "";
