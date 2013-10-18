@@ -7,19 +7,28 @@
 #include "../../common.h"
 
 #include <assert.h>
-#ifdef HAVE_FD_PASSING
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
-#endif
 
 /**********************************/
 /*    Clamd support                            */
 #ifdef HAVE_FD_PASSING
 char *CLAMD_SOCKET_PATH = "/var/run/clamav/clamd.ctl";
+#endif
+int CLAMD_PORT = -1;
+char *CLAMD_HOST = "127.0.0.1";
+#ifdef HAVE_FD_PASSING
+int USE_UNIX_SOCKETS = 1;
+#endif
+char CLAMD_ADDR[CI_MAX_PATH];
 
 static struct ci_conf_entry clamd_conf_variables[] = {
+#ifdef HAVE_FD_PASSING
     {"ClamdSocket", &CLAMD_SOCKET_PATH, ci_cfg_set_str, NULL},
+#endif
+    {"ClamdHost", &CLAMD_HOST, ci_cfg_set_str, NULL},
+    {"ClamdPort", &CLAMD_PORT, ci_cfg_set_int, NULL},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -57,23 +66,53 @@ static void clamd_set_versions();
 
 static int clamd_connect()
 {
+#ifdef HAVE_FD_PASSING
     struct sockaddr_un usa;
-    int sockd;
+#endif
+    struct sockaddr_in isa;
+    struct sockaddr *addr = NULL;
+    size_t addr_len = 0;
+    int sockd = -1;
 
-    if((sockd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
-        ci_debug_printf(1, "clamd_connect: Can not create socket to connect to clamd server!\n" );
-	return -1;
+#ifdef HAVE_FD_PASSING
+    if (USE_UNIX_SOCKETS) {
+        if((sockd = socket(AF_UNIX, SOCK_STREAM, 0)) < 0) {
+            ci_debug_printf(1, "clamd_connect: Can not create unix socket to connect to clamd server!\n" );
+            return -1;
+        }
+
+        memset((void *)&usa, 0, sizeof(struct sockaddr_un));
+        usa.sun_family = AF_UNIX;
+        strncpy(usa.sun_path, CLAMD_SOCKET_PATH, sizeof(usa.sun_path));
+        usa.sun_path[sizeof(usa.sun_path) - 1] = '\0';
+        addr = (struct sockaddr *)&usa;
+        addr_len = sizeof(struct sockaddr_un);
+    } else
+#endif
+    {
+        if (CLAMD_PORT < 0) {
+            ci_debug_printf(1, "clamd_connect: No connection method available!\n" );
+            return -1;
+        }
+
+        if((sockd = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
+            ci_debug_printf(1, "clamd_connect: Can not create socket to connect to clamd server!\n" );
+            return -1;
+        }
+
+        memset((void *)&isa, 0, sizeof(struct sockaddr_in));
+        isa.sin_family = AF_INET;
+        isa.sin_port = htons(CLAMD_PORT);
+        isa.sin_addr.s_addr = inet_addr(CLAMD_HOST);
+        addr = (struct sockaddr *)&isa;
+        addr_len = sizeof(struct sockaddr_in);
     }
 
-    memset((void *)&usa, 0, sizeof(struct sockaddr_un));
-    usa.sun_family = AF_UNIX;
-    strncpy(usa.sun_path, CLAMD_SOCKET_PATH, sizeof(usa.sun_path));
-    usa.sun_path[sizeof(usa.sun_path) - 1] = '\0';
-    
-    if(connect(sockd, (struct sockaddr *)&usa, sizeof(struct sockaddr_un)) < 0) {
-        ci_debug_printf(1, "clamd_connect: Can not connect to clamd server!\n" );
+
+    if(connect(sockd, addr, addr_len) < 0) {
+        ci_debug_printf(1, "clamd_connect: Can not connect to clamd server on %s!\n", CLAMD_ADDR);
         close(sockd);
-	return -1;
+        return -1;
     }
 
     return sockd;
@@ -142,6 +181,33 @@ static int clamd_response(int fd, char *buf, size_t size)
     return written; /*return read bytes*/
 }
 
+static int send_filename(int sockfd, const char *filename)
+{
+    int len;
+    char *buf;
+
+    if (! filename) {
+        ci_debug_printf(1, "send_filename: Filename to be sent to clamd cannot be NULL!\n");
+        return 0;
+    }
+    ci_debug_printf(5, "send_filename: File '%s' should be scanned.\n", filename);
+
+    len = strlen(filename) + strlen("zSCAN") + 2;
+    if (!(buf = malloc(len))) {
+        ci_debug_printf(1, "!Cannot allocate a command buffer: %s\n", strerror(errno));
+        return 0;
+    }
+    sprintf(buf, "zSCAN %s", filename);
+
+    ci_debug_printf(5, "send_filename: Send '%s' to clamd (len=%d)\n", buf, len);
+    if (clamd_command(sockfd, buf, len) <= 0) {
+        return 0;
+    }
+
+    return 1;
+}
+
+#ifdef HAVE_FD_PASSING
 static int send_fd(int sockfd, int fd)
 {
     struct msghdr mh;
@@ -176,6 +242,7 @@ static int send_fd(int sockfd, int fd)
 
     return 1;
 }
+#endif
 
 int clamd_init(struct ci_server_conf *server_conf)
 {
@@ -187,7 +254,28 @@ int clamd_post_init(struct ci_server_conf *server_conf)
     /* try connect to see if clamd running*/
     char buf[1024];
     int ret;
-    int sockfd = clamd_connect();
+    int sockfd;
+
+    if (CLAMD_PORT > 0) {
+        ci_debug_printf(5, "clamd_init: Use TCP socket\n");
+#ifdef HAVE_FD_PASSING
+        USE_UNIX_SOCKETS = 0;
+#endif
+        snprintf(CLAMD_ADDR, sizeof(CLAMD_ADDR), "%s:%d", CLAMD_HOST, CLAMD_PORT);
+    } else {
+#ifdef HAVE_FD_PASSING
+        ci_debug_printf(5, "clamd_init: Use Unix socket\n");
+        USE_UNIX_SOCKETS = 1;
+        strncpy(CLAMD_ADDR, CLAMD_SOCKET_PATH, sizeof(CLAMD_ADDR));
+        CLAMD_ADDR[sizeof(CLAMD_ADDR) - 1] = '\0';
+#else
+        ci_debug_printf(1, "clamd_init: Clamd TCP port is not defined and requored\n");
+        return CI_ERROR;
+#endif
+    }
+    ci_debug_printf(5, "clamd_init: connect address %s\n", CLAMD_ADDR);
+
+    sockfd = clamd_connect();
     if (!sockfd) {
         ci_debug_printf(1, "clamd_init: Error while connecting to server\n");
         return CI_ERROR;
@@ -254,7 +342,7 @@ int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_ver
 
 int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 {
-    char resp[1024], *s, *f, *v;
+    char resp[1024], *s, *f, *v, *filename;
     int sockfd, ret, status;
     int fd = body->fd;
 
@@ -267,7 +355,21 @@ int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
         return 0;
     }
 
-    ret = send_fd(sockfd, fd);
+#ifdef HAVE_FD_PASSING
+    if (USE_UNIX_SOCKETS) {
+        ret = send_fd(sockfd, fd);
+    } else 
+#endif
+    {
+        /*
+          Change the file mode to 0640, to be readable by
+          a clamd daemon having the same group with us
+        */
+        fchmod(fd, 0666);
+        filename = body->filename;
+        ci_debug_printf(5, "clamd_scan: Scan file '%s'\n", body->filename);
+        ret = send_filename(sockfd, filename);
+    }
     ret = clamd_response(sockfd, resp, sizeof(resp));
     if (ret < 0) {
         ci_debug_printf(1, "clamd_scan: Error reading response from clamd server!\n");
@@ -329,5 +431,3 @@ const char *clamd_signature()
 {
     return CLAMD_SIGNATURE;
 }
-
-#endif  /*HAVE_FD_PASSING*/
