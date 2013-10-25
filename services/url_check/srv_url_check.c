@@ -29,6 +29,7 @@
 #include "c_icap/commands.h"
 #include "c_icap/txt_format.h"
 #include "c_icap/txtTemplate.h"
+#include "c_icap/stats.h"
 #if defined(HAVE_BDB)
 #include "sguardDB.h"
 #endif
@@ -166,6 +167,12 @@ struct profile {
 static struct profile *PROFILES = NULL;
 int EARLY_RESPONSES = 1;
 
+/*Counters: */
+int UC_CNT_BLOCKED = -1;
+int UC_CNT_ALLOWED = -1;
+int UC_CNT_MATCHED = -1;
+int UC_CNT_REQUESTS = -1;
+
 int url_check_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf);
 void *url_check_init_request_data(ci_request_t * req);
@@ -261,6 +268,13 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
 
      if (URL_CHECK_DATA_POOL < 0)
 	 return CI_ERROR;
+
+     /*Initialize counters*/
+     UC_CNT_BLOCKED = ci_stat_entry_register("Requests blocked", STAT_INT64_T,  "Service url_check");
+     UC_CNT_ALLOWED = ci_stat_entry_register("Requests allowed", STAT_INT64_T,  "Service url_check");
+     UC_CNT_MATCHED = ci_stat_entry_register("Requests matched", STAT_INT64_T,  "Service url_check");
+     UC_CNT_REQUESTS = ci_stat_entry_register("Requests processed", STAT_INT64_T,  "Service url_check");
+
      /*Add internal database lookups*/
      int_db = new_lookup_db("ALL", "All (Internal DB)", DB_INTERNAL, CHECK_HOST, NULL,
 			    all_lookup_db,
@@ -535,6 +549,8 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_debug_printf(1,"srv_url_check: Error searching in profile! Allow the request\n");
 	  return CI_MOD_ALLOW204;
      }
+
+     ci_stat_uint64_inc(UC_CNT_REQUESTS, 1);
      
      if (uc->match_info.matched_dbs[0]) {
          ci_request_set_str_attribute(req,"url_check:matched_cat", uc->match_info.matched_dbs);
@@ -586,6 +602,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
      */
 
      if (pass == DB_BLOCK) {
+          ci_stat_uint64_inc(UC_CNT_BLOCKED, 1);
           /*The URL is not a good one so.... */
           ci_debug_printf(9, "srv_url_check: Oh!!! we are going to deny this site.....\n");
 
@@ -612,6 +629,14 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           body_data_init(&uc->body, ERROR_PAGE, 0, err_page);
      }
      else {
+         if (uc->match_info.matched_dbs[0]) {
+             if (uc->match_info.action == DB_MATCH)
+                 ci_stat_uint64_inc(UC_CNT_MATCHED, 1);
+             else
+                 ci_stat_uint64_inc(UC_CNT_ALLOWED, 1);
+         }
+          /* else  no database matched*/
+
           /*if we are inside preview negotiation or client allow204 responces oudsite of preview then */
           if (preview_data || ci_req_allow204(req))
                return CI_MOD_ALLOW204;
