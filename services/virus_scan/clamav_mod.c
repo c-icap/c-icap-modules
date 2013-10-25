@@ -33,16 +33,43 @@ static long int CLAMAV_MAXRECLEVEL = 5;
 static long int CLAMAV_MAX_FILES = 0;
 static ci_off_t CLAMAV_MAXFILESIZE = 100 * 1048576; /* maximal archived file size == 100 Mb */
 static ci_off_t CLAMAV_MAXSCANSIZE = 200 * 1048576;
+static int CLAMAV_DETECT_PUA = 0;
+static int CLAMAV_OFFICIAL_DB_ONLY = 0;
+static char *CLAMAV_EXCLUDE_PUA = NULL;
+static char *CLAMAV_INCLUDE_PUA = NULL;
+static int CLAMAV_BLOCKENCRYPTED = 0;
+static int CLAMAV_BLOCKBROKEN = 0;
+static int CLAMAV_HEURISTIC_PRECEDENCE = 0;
+static int CLAMAV_BLOCKMACROS = 0;
+static int CLAMAV_PHISHING_BLOCKSSL = 0;
+static int CLAMAV_PHISHING_BLOCKCLOAK = 0;
 
 int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdata);
+int cfg_set_pua_list(const char *directive, const char **argv, void *setdata);
 static struct ci_conf_entry clamav_conf_variables[] = {
      {"ClamAvMaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
+     {"MaxRecLevel", &CLAMAV_MAXRECLEVEL, ci_cfg_size_long, NULL},
      {"ClamAvMaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
+     {"MaxFilesInArchive", &CLAMAV_MAX_FILES, ci_cfg_size_long, NULL},
 /*     {"ClamAvBzipMemLimit",NULL,setBoolean,NULL},*/
      {"ClamAvMaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
       NULL},
+     {"MaxFileSizeInArchive", &CLAMAV_MAXFILESIZE, ci_cfg_size_off,
+      NULL},
      {"ClamAvMaxScanSize", &CLAMAV_MAXSCANSIZE, ci_cfg_size_off, NULL},
+     {"MaxScanSize", &CLAMAV_MAXSCANSIZE, ci_cfg_size_off, NULL},
      {"ClamAvTmpDir", NULL, cfg_virus_scan_TmpDir, NULL},
+     {"TmpDir", NULL, cfg_virus_scan_TmpDir, NULL},
+     {"DetectPUA", &CLAMAV_DETECT_PUA, ci_cfg_onoff, NULL},
+     {"ExcludePUA", &CLAMAV_EXCLUDE_PUA, cfg_set_pua_list, NULL},
+     {"IncludePUA", &CLAMAV_INCLUDE_PUA, cfg_set_pua_list, NULL},
+     {"OfficialDatabaseOnly", &CLAMAV_OFFICIAL_DB_ONLY, ci_cfg_onoff, NULL},
+     {"ArchiveBlockEncrypted", &CLAMAV_BLOCKENCRYPTED, ci_cfg_onoff, NULL},
+     {"DetectBrokenExecutables", &CLAMAV_BLOCKBROKEN, ci_cfg_onoff, NULL},
+     {"HeuristicScanPrecedence", &CLAMAV_HEURISTIC_PRECEDENCE, ci_cfg_onoff, NULL},
+     {"OLE2BlockMacros", &CLAMAV_BLOCKMACROS, ci_cfg_onoff, NULL},
+     {"PhishingAlwaysBlockSSLMismatch", &CLAMAV_PHISHING_BLOCKSSL, ci_cfg_onoff, NULL},
+     {"PhishingAlwaysBlockCloak", &CLAMAV_PHISHING_BLOCKCLOAK, ci_cfg_onoff, NULL},
      {NULL, NULL, NULL, NULL}
 };
 
@@ -96,6 +123,7 @@ struct virus_db {
 #ifndef HAVE_LIBCLAMAV_095
 struct cl_limits limits;
 #endif
+unsigned int CLAMSCAN_OPTIONS = CL_SCAN_STDOPT;
 
 struct virus_db *virusdb = NULL;
 struct virus_db *old_virusdb = NULL;
@@ -117,6 +145,11 @@ int clamav_init(struct ci_server_conf *server_conf)
 int clamav_post_init(struct ci_server_conf *server_conf)
 {
     int ret;
+
+    if (CLAMAV_EXCLUDE_PUA && CLAMAV_INCLUDE_PUA) {
+        ci_debug_printf(1, "Error: you can define only one of the ExcludePUA and IncludePUA options");
+        return CI_ERROR;
+    }
 
     /*Else proceed loading the clamav virus database*/
     ret = clamav_init_virusdb();
@@ -152,6 +185,32 @@ int clamav_post_init(struct ci_server_conf *server_conf)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_RECURSION\n");
 #endif
 
+     /*Build scan options*/
+#if defined(CL_SCAN_BLOCKENCRYPTED)
+     if (CLAMAV_BLOCKENCRYPTED)
+         CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKENCRYPTED;
+#endif
+#if defined(CL_SCAN_BLOCKBROKEN)
+     if (CLAMAV_BLOCKBROKEN)
+         CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKBROKEN;
+#endif
+#if defined(CL_SCAN_HEURISTIC_PRECEDENCE)
+     if (CLAMAV_HEURISTIC_PRECEDENCE)
+         CLAMSCAN_OPTIONS |= CL_SCAN_HEURISTIC_PRECEDENCE;
+#endif
+#if defined(CL_SCAN_BLOCKMACROS)
+     if (CLAMAV_BLOCKMACROS)
+         CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKMACROS;
+#endif
+#if defined(CL_SCAN_PHISHING_BLOCKSSL)
+     if (CLAMAV_PHISHING_BLOCKSSL)
+         CLAMSCAN_OPTIONS |= CL_SCAN_PHISHING_BLOCKSSL;
+#endif
+#if defined(CL_SCAN_PHISHING_BLOCKCLOAK)
+     if (CLAMAV_PHISHING_BLOCKCLOAK)
+         CLAMSCAN_OPTIONS |= CL_SCAN_PHISHING_BLOCKCLOAK;
+#endif
+
      clamav_set_versions();
      av_register_engine(&clamav_engine);
      av_reload_istag();
@@ -169,10 +228,36 @@ int clamav_init_virusdb()
 {
      int ret;
      unsigned int no = 0;
+     unsigned int options = CL_DB_STDOPT;
+#if defined(CL_DB_PUA_EXCLUDE) || defined(CL_DB_PUA_INCLUDE)
+     char *pua_str = NULL;
+#endif
      virusdb = malloc(sizeof(struct virus_db));
      memset(virusdb, 0, sizeof(struct virus_db));
      if (!virusdb)
           return 0;
+
+#if defined(CL_DB_PUA)
+     if (CLAMAV_DETECT_PUA)
+         options |= CL_DB_PUA;
+#endif
+#if defined(CL_DB_PUA_INCLUDE)
+     if (CLAMAV_INCLUDE_PUA) {
+         options |= CL_DB_PUA_INCLUDE;
+         pua_str = CLAMAV_INCLUDE_PUA;
+     }
+#endif
+#if defined(CL_DB_PUA_EXCLUDE)
+     if (CLAMAV_EXCLUDE_PUA) {
+         options |= CL_DB_PUA_EXCLUDE;
+         pua_str = CLAMAV_EXCLUDE_PUA;
+     }
+#endif
+#if defined(CL_DB_OFFICIAL_ONLY)
+     if (CLAMAV_OFFICIAL_DB_ONLY)
+         options |= CL_DB_OFFICIAL_ONLY;
+#endif
+
 #ifdef HAVE_LIBCLAMAV_095
      if((ret = cl_init(CL_INIT_DEFAULT))) {
         ci_debug_printf(1, "!Can't initialize libclamav: %s\n", cl_strerror(ret));
@@ -184,11 +269,16 @@ int clamav_init_virusdb()
 	 return 0;
      }
 
-     if ((ret = cl_load(cl_retdbdir(), virusdb->db, &no, CL_DB_STDOPT))) {
+#if defined(CL_DB_PUA_EXCLUDE) || defined(CL_DB_PUA_INCLUDE)
+     if (pua_str)
+         cl_engine_set_str(virusdb->db, CL_ENGINE_PUA_CATEGORIES, pua_str);
+#endif
+
+     if ((ret = cl_load(cl_retdbdir(), virusdb->db, &no, options))) {
           ci_debug_printf(1, "Clamav DB load: cl_load failed: %s\n",
                           cl_strerror(ret));
 #elif defined(HAVE_LIBCLAMAV_09X)
-     if ((ret = cl_load(cl_retdbdir(), &(virusdb->db), &no, CL_DB_STDOPT))) {
+     if ((ret = cl_load(cl_retdbdir(), &(virusdb->db), &no, options))) {
           ci_debug_printf(1, "Clamav DB load: cl_load failed: %s\n",
                           cl_strerror(ret));
 #else
@@ -395,11 +485,11 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 #ifndef HAVE_LIBCLAMAV_095
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb, &limits,
-                     CL_SCAN_STDOPT);
+                     CLAMSCAN_OPTIONS);
 #else
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb,
-                     CL_SCAN_STDOPT);
+                     CLAMSCAN_OPTIONS);
 #endif
 
      status = 1;
@@ -518,6 +608,31 @@ int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdat
      CLAMAV_TMP = strdup(argv[0]);
      ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
      return 1;
+}
+
+int cfg_set_pua_list(const char *directive, const char **argv, void *setdata)
+{
+    int i, len, pos;
+    char *pua_list = *(char **)setdata;
+    if (pua_list)
+        pos = strlen(pua_list);
+    else
+        pos = 0;
+    len = pos;
+
+    for (i = 0; argv[i] != NULL; ++i) {
+        len += strlen(argv[i]) + 1;
+    }
+
+    pua_list = (char *)realloc(pua_list, len + 1);
+    for (i = 0; argv[i] != NULL; ++i) {
+        snprintf(pua_list + pos, len + 1 - pos, ".%s", argv[i]);
+        pos += strlen(argv[i]) + 1;
+    }
+    pua_list[len] = '\0';
+    ci_debug_printf(2, "%s set to %s\n", directive, pua_list);
+    *(char **)setdata  = pua_list;
+    return 1;
 }
 
 void clamav_dbreload_command(const char *name, int type, const char **argv)
