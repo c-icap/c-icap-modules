@@ -308,7 +308,7 @@ void clamd_release()
 
 int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_version, size_t str_version_len)
 {
-    char buf[1024];
+    char buf[1024], *s;
     int ret, v1, v2, v3;
     int sockfd = clamd_connect();
     if (sockfd < 0)
@@ -326,16 +326,29 @@ int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_ver
         return 0;
     }
 
-    ret = sscanf(buf, "ClamAV %d.%d.%d/%d/", &v1, &v2, &v3, version);
-    if (ret != 4) {
-        ci_debug_printf(1, "clamd_get_versions: parse error. Response string: %s\n", buf);
+    if (strncasecmp(buf, "ClamAV", 6) != 0) {
+        ci_debug_printf(1, "clamd_get_versions: Wrong response from clamd server: %s\n", buf);
         clamd_release_connection(sockfd);
         return 0;
     }
+
+    s = strchr(buf, '/');
+    *version = 0;
+    if (s) {
+        ++s;
+        *version = strtol(s, NULL, 10);
+    }
+    v1 = v2 = v3 = 0;
+    ret = sscanf(buf + 7, "%d.%d.%d", &v1, &v2, &v3);
+    if (*version == 0 || ret < 2) {
+        ci_debug_printf(1, "clamd_get_versions: WARNING: Can not parse response from clamd server: %s\n", buf);
+    }
+
     snprintf(str_version, str_version_len, "%d%d%d", v1,v2,v3);
     str_version[str_version_len - 1] = '\0';
     *level = 0; /*We are not able to retrieve level*/
 
+    ci_debug_printf(6, "clamd_get_versions: Succesfully parse response from clamd server: %s (version: %d, strversion: '%s')\n", buf, *version, str_version);
     clamd_release_connection(sockfd);
     return 1;
 }
