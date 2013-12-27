@@ -39,12 +39,15 @@ static void free_a_buffer(void *op, void *ptr){
 static int do_file_write(ci_simple_file_t *fout, const void *buf, size_t count) {
     int bytes, to_write;
     errno = 0;
-    to_write = count;
+    to_write = (int)count;
     do {
-        bytes = ci_simple_file_write(fout, buf, (int)count, 0);
-        if (bytes > 0) 
+        bytes = ci_simple_file_write(fout, buf, to_write, 0);
+        if (bytes > 0) {
+            buf += bytes;
             to_write -= bytes;
-    }while ( bytes >= 0 || to_write > 0);
+        } else /* will result to decoding error */
+            return 0;
+    } while (to_write > 0);
 
     return count;
 }
