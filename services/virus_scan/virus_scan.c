@@ -285,7 +285,7 @@ void *virus_scan_init_request_data(ci_request_t * req)
 
      preview_size = ci_req_preview_size(req);
 
-     if (req->args) {
+     if (req->args[0] != '\0') {
           ci_debug_printf(5, "service arguments:%s\n", req->args);
      }
      if (ci_req_hasbody(req)) {
@@ -314,7 +314,7 @@ void *virus_scan_init_request_data(ci_request_t * req)
           
           memcpy(data->engine, DEFAULT_ENGINES, AV_MAX_ENGINES * sizeof(av_engine_t *));
 
-          if (req->args) {
+          if (req->args[0] != '\0') {
                ci_debug_printf(5, "service arguments:%s\n", req->args);
                virus_scan_parse_args(data, req->args);
           }
