@@ -835,18 +835,20 @@ struct profile *profile_select(ci_request_t *req)
   default_profile = NULL;
   tmp_profile = PROFILES;
   while(tmp_profile) {
-
-    if (tmp_profile->access_list &&
-	(ci_access_entry_match_request(tmp_profile->access_list, 
-				       req) == CI_ACCESS_ALLOW)) {
-        return tmp_profile;
-    }
+      ci_debug_printf(5, "url_check: Will check for profile %s\n", tmp_profile->name);
+      if (tmp_profile->access_list &&
+          (ci_access_entry_match_request(tmp_profile->access_list, 
+                                         req) == CI_ACCESS_ALLOW)) {
+          ci_debug_printf(5, "url_check: profile %s matches!\n", tmp_profile->name);
+          return tmp_profile;
+      }
     
-    if (strcmp(tmp_profile->name,"default")==0)
-        default_profile = tmp_profile;
+      if (strcmp(tmp_profile->name,"default")==0)
+          default_profile = tmp_profile;
 
-    tmp_profile = tmp_profile->next;
+      tmp_profile = tmp_profile->next;
   }
+  ci_debug_printf(5, "url_check: Default profile selected!\n");
   return default_profile;
 }
 
