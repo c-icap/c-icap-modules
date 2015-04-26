@@ -138,6 +138,45 @@ if test a"$zlib" = "ano"; then
     AC_MSG_WARN("zlib required for handling deflate encoded objects!")
 fi
 
+# Check for bzlib
+AC_ARG_WITH(bzlib,
+[  --with-bzlib Path to bzlib library],
+[
+case "$withval" in
+     yes)
+        bzlib=yes;
+     ;;
+     no)
+        bzlib=no;
+     ;;
+     *)
+        bzlib=$withval;
+     ;;
+     esac
+],
+[ bzlib=yes]
+)
+
+if test a"$bzlib" != "ano"; then
+   if test a"$bzlib" != "ayes"; then
+        OLDCFLAGS=$CFLAGS
+        OLDLDFLAGS=$LDFLAGS
+        CFLAGS="$CFLAGS -I$bzlib/include"
+        LDFLAGS="$LDFLAGS -L$bzlib/lib"
+        AC_CHECK_LIB(bz2,BZ2_bzDecompressInit,[BZLIB_ADD_LDADD="-L$bzlib/lib -lbz2";BZLIB_ADD_FLAG="-I$bzlib/include";AC_DEFINE(HAVE_BZLIB,1,[Define HAVE_BZLIB if bzlib installed])],[bzlib=no])
+        CFLAGS=$OLDCFLAGS
+        LDFLAGS=$OLDLDFLAGS
+        AC_SUBST(BZLIB_ADD_LDADD)
+        AC_SUBST(BZLIB_ADD_FLAG)
+   else
+        AC_CHECK_LIB(bz2,BZ2_bzDecompressInit,[BZLIB_ADD_LDADD=" -lbz2";AC_DEFINE(HAVE_BZLIB,1,[Define HAVE_BZLIB if bzlib installed])],[bzlib=no])
+        AC_SUBST(BZLIB_ADD_LDADD)
+   fi
+fi
+if test a"$bzlib" = "ano"; then
+    AC_MSG_WARN("bzlib required for handling bzip2 encoded objects!")
+fi
+
 AC_ARG_WITH(clamav,
 [  --with-clamav	Where to find ClamAv ],
 [ case "$withval" in
@@ -381,7 +420,7 @@ AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
 AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
-AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile modules/Makefile])
+AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile])
 
 if test a"$virus_scan_profiles_support" != a"no"; then
 echo -e "\n"\

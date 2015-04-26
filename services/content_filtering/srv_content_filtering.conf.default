@@ -1,0 +1,214 @@
+#
+# To enable url_check service in c-icap, copy this file in c-icap
+# configuration directory and add the following line at the end of 
+# c-icap.conf file:
+#      Include srv_content_filtering.conf
+#
+
+# Module: srv_content_filtering
+# Example:
+#	Service url_check_module srv_url_check.so
+#
+# Description:
+#	This is an score based content filtering icap service
+#       This module add the following log formating codes for use with
+#       the LogFormat configuration parameter:
+#	  %{srv_content_filtering:action}Sa Print the service decision
+#         %{srv_content_filtering:scores}Sa Print the list of scores of
+#                                           the matching filters applied
+#         %{srv_content_filtering:action_filter}Sa Print the matching filter
+#                                                  caused the final decision
+#       Example:
+#         LogFormat mySrvContentFiltering "%tl, %>a %im %is %huo  [Scores: %{srv_content_filtering:scores}Sa] [ActionFilter: %{srv_content_filtering:action_filter}Sa] [Action: %{srv_content_filtering:action}Sa]"
+#
+#       The following additional formatting codes can be used with the
+#       service template "BLOCK":
+#         %CFA  The service decision
+#         %CFF  The matching filter caused the decision
+#         %CFC  The final score, which caused the service decision
+#         %CFR  The reason of the decision: [>|<|=]ConfiguredScore
+#         %CFS  The list of scores of the matching filters applied
+#
+
+Service srv_cfg_filter srv_content_filtering.so
+
+# TAG: srv_content_filtering.MaxBodyData
+# Format: srv_content_filtering.MaxBodyData size[K|M|G]
+# Description:
+#       Set the maximum size of body data to process
+# Example:
+#       srv_content_filtering.MaxBodyData 2M
+
+# TAG: srv_content_filtering.Match
+# Format:
+#	srv_content_filtering.Match filter-name type regex [score=TheScore] [info{Tag}=TagValue]
+#	srv_content_filtering.Match filter-name type file:PathToFileName
+# Description:
+#	filter-name
+#	     A name for the matching filter. The same name can be used
+#	     more than once to define filters with more than one matching rules.
+#       type
+#            It can be one of the following:
+#            body: apply the regex expression to body data
+#            url:  apply the regex expression to the http request url
+#            header{HeaderName}: apply the regex expression to the HTTP 
+#                                  response header "HeaderName".
+#            request_header{HeaderName}: apply the regex expression to the
+#                                          HTTP request header "HeaderName".
+#       regex
+#            It has the form /regex_definition/flags.
+#            The "flags" is one or more letters, its of them express a flag.
+#            Common flags:
+#              g This flag forces the score multiplied by the number of regex
+#                expression matches. For example if the expression matches 5
+#                times and the devined score value is 10 then the final score
+#                will be 50.
+#              i Do caseless matching
+#              m Match-any-character operators don't match a newline
+#                and ^$ operators does not match newlines within data
+#            If the module compiled using the pcre library the following flags
+#            can be used:
+#              s (PCRE_DOTALL)  matches anything including NL
+#              x (PCRE_EXTENDED) Ignore whitespace and # comments
+#              A (PCRE_ANCHORED) Force pattern anchoring
+#              D (PCRE_DOLLAR_ENDONLY) $ not to match newline at end
+#              U (PCRE_UNGREEDY) Invert greediness of quantifiers
+#              X (PCRE_EXTRA) PCRE extra features
+#              u (PCRE_UTF8) Run in UTF-8 mode
+#       TheScore
+#            A decimal number which express a score value for the HTTP object
+#            matches the regular expression.
+#	Tag,TagValue
+#	     Information tag for this matching rule. This is currently used
+#	     by "replace" action to provide a regex replacement for matching
+#	     text.
+#	PathToFileName
+#	     If a parameter in the form file:PathToFileName exist as argument
+#	     then the module load rules from the file 'PathToFileName'.
+#	     The rules in this file stored in the form:
+#		score=TheScore [info{Tag}=TagValue] regex
+#	     one rule per line, and where the 'TheScore', 'regex' and 'info'
+#	     has the form described above. Empty lines are allowed. When a line
+#	     starts from '#' considered as a comment line and ignored
+#
+# Example:
+#       srv_content_filtering.Match PornScore body /(porn|cum|suck)/ig score=5
+#       srv_content_filtering.Match PornScore url /(sex|porn)/i score=10
+#       srv_content_filtering.Match VideoHeader Header{Content-Type} /application\/.*?video/
+
+# TAG: srv_content_filtering.Profile
+# Format: srv_content_filtering.Profile ProfileName Action score{MatchingFilter[(>|<|=)TheScore]} [Header|template=Templete|replaceInfo=ReplaceTextTag]
+# Description:
+#       It is used to define policy profiles. The use of "default" as
+#	ProfileName is reserved and defines a default policy for all 
+#	requests for which no profile defined.
+#	
+#	The following actions can be used for a profile:
+#	block
+#	    Blocks and replaces the HTTP response with an error page. The error
+#	    page template defined using the "template=TemplateName" parameter
+#	    or the tempalte "BLOCK" is used.
+#	allow
+#	    Stop processing profile actions and just allowing the response.
+#	add_header
+#	    Add a header to the HTTP response.
+#	replace
+#	    Replaces parts of HTTP response body data. The "replaceInfo"
+#	    parameter must be given to define a name for the info tag which
+#	    contains as value the replacement to use for "Match" regex rules.
+#	    Example usage:
+#		srv_content_filtering.Match PornScore url /(\ +)(fuck|pussy)(\ +)/i score=10 info{XXX}="$1XXX$3"
+#	        srv_content_filtering.Profile chtsanti replace score{PornScore>5} replaceInfo=XXX
+#	    The above example will replace "fuck" and "pussy" words with the 
+#	    "XXX" word for documents having PornScore greater than 5.
+# 	
+#	The actions applied if a rule which defined by the score of a matching
+#	filter matches.
+#	The module iterates over defined actions for a profile, examines if the
+#	score rule matches and if yes apply the action, untill the first "allow"
+#	or "block" action.  
+#       ProfileName
+#               A name for the defined profile.
+#       Action
+#               Can have one of the following values:
+#                 block
+#                 allow
+#                 add_header
+#		  replace
+#	MatchingFilter(>|<|=)TheScode
+#		Used to define a rule for the defined action. The action is 
+#		applied if the filter named "MatchingFilter" has score greater
+#		less or equal to the "TheScore"
+#       Header
+#		Used with add_header action.
+#               The header definition to add if the add_header action defined
+#               in the form "headerName: headerValue".
+#               The c-icap log formating codes can be used here.
+#	Template
+#		Used with "block" action.
+#		The template name to use as error page if the block action
+#		defined.
+#	ReplaceTextTag
+#		Used with "replace" action.
+#		The information tag which must be used to replace text for a
+#		matching rule
+#               
+# Example:
+#	To block pages with score "PornScore" greater than 15  and replace some
+#	bad words and add an info header to pages with score greater than 5
+#	use:
+#		srv_content_filtering.Match PornScore body /(\ +)(fuck|pussy)(\ +)/i score=10 info{XXX}="(1)XXX(3)"
+#		srv_content_filtering.Profile chtsanti block score{PornScore>15}
+#               srv_content_filtering.Profile chtsanti replace score{PornScore>5} replaceInfo=XXX
+#		srv_content_filtering.Profile chtsanti add_header score{PornScore>5} "X-SrvContentFiltering-Module: maybe-porn"
+	
+
+# TAG: srv_content_filtering.ProfileOption
+# Format: srv_content_filtering.ProfileOption ProfileName Option [value]
+# Description:
+#	It is used to set various otptions for a profile.
+#	ProfileName
+#		The name of the profile
+#	
+#	Option can be one of the following:
+#	AnyContentType
+#		By default srv_content_filtering module process only web pages
+#		which are of content type "text/*" (The Content-Type HTTP 
+#		response header includes the value "text/") or 
+#		"application/javascript". 
+#		This option can be used to ignore this rule for the given
+#		profile. This options must always used together with
+#		http_resp_header{Content-Type} or data_type acls in
+#		srv_content_filtering.ProfileAccess, or only with matching
+#		filters operate on http headers or URLs .
+#	MaxBodyData value
+#		Overwrite the srv_content_filtering.MaxBodyData for requests
+#		using this profile. The 'K' and 'M' suffixes can be used to
+#		value to express value on Kilobytes or Megabytes.
+# Example:
+#	srv_content_filtering.ProfileOption MyProfile AnyContentType
+#	srv_content_filtering.ProfileOption MyProfile MaxBodyData 4M
+
+# TAG: srv_content_filtering.ProfileAccess
+# Format: srv_content_filtering.ProfileAccess ProfileName [!]acl1 ...
+# Description:
+#       It is used to select  policy profile to apply based on acls
+# Default:
+#	None set
+# Example:
+#	acl Foo group foo
+#	url_check.ProfileAccess BlockPorn Foo
+
+# TAG: srv_content_filtering.Action
+# Format: srv_content_filtering.Action Action score{MatchingFilter[(>|<|=)TheScore]}
+# Description:
+#       Equivalent to a srv_content_filtering.Profile configuration line 
+#       with the profile name "default":
+#            srv_content_filtering.Profile default ....
+# Default:
+#	None set
+# Example:
+#       srv_content_filtering.Action block score{PornScore>5}
+#       srv_content_filtering.Action block score{VideoHeader}
+
+# End module: srv_content_filtering
