@@ -58,8 +58,8 @@ struct srv_content_filtering_req_data {
     /*the body data*/
     srv_cf_body_t body;
     enum EncodeMethod enMethod;
-    uint64_t maxBodyData;
-    uint64_t expectedData;
+    int64_t maxBodyData;
+    int64_t expectedData;
     /*flag for marking the eof*/
     int eof;
     int isText;
@@ -244,15 +244,16 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      /*If there are is a Content-Length header, check it we do not want to 
       process body data with more than MaxBodyData size*/
      content_len = ci_http_content_length(req);
+     ci_debug_printf(4, "Srv_Content_Filtering expected length: %"PRINTF_OFF_T"\n", (CAST_OFF_T) content_len);
      srv_content_filtering_data->expectedData = content_len;
 
      if (content_len > srv_content_filtering_data->maxBodyData) {
-         ci_debug_printf(4, "Srv_Content_Filtering  content-length > %ld will not process\n", srv_content_filtering_data->maxBodyData);
+         ci_debug_printf(4, "Srv_Content_Filtering  content-length=%"PRINTF_OFF_T" > %ld will not process\n", (CAST_OFF_T)content_len, srv_content_filtering_data->maxBodyData);
          return CI_MOD_ALLOW204;
      }
 
      /*If we do not have content len, for simplicity do not proccess it*/
-     if (RequireContentLength && content_len == 0) {
+     if (RequireContentLength && content_len <= 0) {
          ci_debug_printf(4, "Srv_Content_Filtering not Content-Length will not process\n");
          return CI_MOD_ALLOW204;
      }
@@ -273,7 +274,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      else
          srv_content_filtering_data->enMethod = emNone;
 
-     srv_cf_body_build(&srv_content_filtering_data->body, content_len ? content_len + 1 : srv_content_filtering_data->maxBodyData);
+     srv_cf_body_build(&srv_content_filtering_data->body, content_len > 0 ? content_len + 1 : srv_content_filtering_data->maxBodyData);
 
      /*if we have preview data and we want to proceed with the request processing
        we should store the preview data. There are cases where all the body
@@ -374,11 +375,12 @@ int srv_content_filtering_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int i
      if(rlen && rbuf) {
          if (srv_content_filtering_data->body.ring == NULL && 
              (srv_content_filtering_data->body.size + *rlen) > srv_content_filtering_data->maxBodyData) {
-             ci_debug_printf(2, "Srv_Content_Filtering content-length:%" PRIu64 " bigger than maxBodyData:%" PRIu64 "\n",
+             ci_debug_printf(4, "Srv_Content_Filtering content-length:%" PRIu64 " bigger than maxBodyData:%" PRId64 "\n",
                              (srv_content_filtering_data->body.size + *rlen),
                              srv_content_filtering_data->maxBodyData);
              if (!srv_cf_body_to_ring(&srv_content_filtering_data->body))
                  return CI_ERROR;
+             ci_debug_printf(5, "Srv_Content_Filtering Stop buffering data, reverted to ring mode, and sent early response\n");
              /*We will not process body data. More data size than expected.*/
              srv_content_filtering_data->abort = 1;
              ci_req_unlock_data(req);

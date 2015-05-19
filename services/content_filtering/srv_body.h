@@ -27,7 +27,7 @@ typedef struct srv_cf_body {
     ci_membuf_t *decoded;
     ci_ring_buf_t *ring;
     int eof;
-    uint64_t size;
+    int64_t size;
 } srv_cf_body_t;
 
 void srv_cf_body_init(srv_cf_body_t *body);

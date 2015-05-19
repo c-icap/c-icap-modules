@@ -5,6 +5,7 @@
 #endif
 #include "c_icap/debug.h"
 #include "filters.h"
+#include <errno.h>
 
 /*Array of srv_cf_profiles_t*/
 ci_ptr_dyn_array_t *PROFILES = NULL;
@@ -284,7 +285,15 @@ int srv_cf_cfg_profile_option(const char *directive, const char **argv, void *se
             return 0;
         }
 
-        prof->maxBodyData = (uint64_t)strtol(argv[2], &e, 10);
+        errno = 0;
+        prof->maxBodyData = (int64_t)strtol(argv[2], &e, 10);
+        if (errno != 0 || e == argv[2]) {
+            ci_debug_printf(1, "srv_url_check: Error: expected integer value for 'MaxBodyData' option got: '%s'", argv[2]);
+            return 0;
+        }
+        if (prof->maxBodyData < 0)
+            prof->maxBodyData = 0;
+            
         if (*e == 'k' || *e == 'K' )
             prof->maxBodyData = prof->maxBodyData * 1024;
         else if (*e == 'm' || *e == 'M' )

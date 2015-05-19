@@ -40,7 +40,7 @@ typedef struct srv_cf_filter_apply {
 typedef struct srv_cf_profile {
     char *name;
     int anyContentType;
-    uint64_t maxBodyData;
+    int64_t maxBodyData;
     ci_access_entry_t *access_list;
     ci_list_t *actions; /*ci_list of srv_cf_action_cfg entries*/
     ci_list_t *filters; /*ci_list of srv_cf_filter_apply_t. Filters to be applied*/

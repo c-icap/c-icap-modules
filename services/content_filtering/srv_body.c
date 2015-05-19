@@ -298,6 +298,7 @@ void srv_cf_body_init(srv_cf_body_t *body)
     body->decoded = NULL;
     body->ring = NULL;
     body->eof = 0;
+    body->size = 0;
 }
 
 int srv_cf_body_build(srv_cf_body_t *body, size_t size)
@@ -306,6 +307,7 @@ int srv_cf_body_build(srv_cf_body_t *body, size_t size)
     body->decoded = NULL;
     body->ring = NULL;
     body->eof = 0;
+    body->size = 0;
     return 1;
 }
 
