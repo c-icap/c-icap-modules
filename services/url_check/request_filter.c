@@ -181,16 +181,16 @@ static int request_filter_cb(void *data, const void *item)
      return 0;
 }
 
-int url_check_request_filters_apply(ci_request_t *req, ci_list_t *request_filters)
+unsigned int url_check_request_filters_apply(ci_request_t *req, ci_list_t *request_filters)
 {
     struct request_filter_cb_data data;
     if (!request_filters)
-        return;
+        return SRV_UC_ACT_NONE;
     data.req = req;
     data.error = 0;
     data.modified = 0;
     ci_list_iterate(request_filters, (void *)&data, request_filter_cb);
-    return data.modified;
+    return data.modified ? SRV_UC_ACT_HEADMOD : SRV_UC_ACT_NONE;
 }
 
 int url_check_request_filters_cfg_parse(ci_list_t **request_filters, const char **argv)

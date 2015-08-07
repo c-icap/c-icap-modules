@@ -21,6 +21,59 @@
 
 #include "c_icap/registry.h"
 
+enum url_check_http_methods {
+    UC_METHOD_UNKNOWN = 0, 
+    UC_HTTP_GET,
+    UC_HTTP_POST,
+    UC_HTTP_PUT,
+    UC_HTTP_HEAD,
+    UC_HTTP_CONNECT,
+    UC_HTTP_TRACE,
+    UC_HTTP_OPTIONS,
+    UC_HTTP_DELETE,
+    UC_METHOD_END
+};
+
+enum url_check_proto {UC_PROTO_UNKNOWN=0, UC_PROTO_HTTP, UC_PROTO_HTTPS, UC_PROTO_FTP};
+
+#define MAX_URL_SIZE  65536
+
+struct url_check_http_info {
+    int http_major;
+    int http_minor;
+    int method;
+    unsigned int port;
+    int proto;
+    int transparent;   /*If it is a transparent request or not*/
+    char host[CI_MAXHOSTNAMELEN + 1];
+    char server_ip[64];                   /*I think ipv6 address needs about 32 bytes*/
+    char site[CI_MAXHOSTNAMELEN + 1];
+    char url[MAX_URL_SIZE];              /* I think it is enough */
+    size_t url_size;
+    char raw_url[MAX_URL_SIZE];
+    size_t raw_url_size;
+    char *args;
+};
+
+#define SRV_UC_ACT_ERROR      0xFFFFFFFF
+#define SRV_UC_ACT_NONE       0x00
+#define SRV_UC_ACT_ABORT      0x01
+#define SRV_UC_ACT_ERRORPAGE  0x02
+#define SRV_UC_ACT_HEADMOD    0x04
+#define SRV_UC_ACT_REQMOD     0x08
+
+#define SRV_UC_ACT_MODIFIED (SRV_UC_ACT_ERRORPAGE | SRV_UC_ACT_HEADMOD | SRV_UC_ACT_REQMOD)
+
+struct url_check_action {
+    const char *name;
+    const char *action_str;
+    unsigned int (*action)(ci_request_t *req, const struct url_check_action *act, const void *data, struct url_check_http_info *http_info);
+    void* (*cfg)(const char **argv);
+    void (*free)(void *data);
+};
+#define SRV_UC_ACTIONS_REGISTRY "srv_url_check::req_actions"
+#define srv_uc_register_req_action(action) ci_registry_add_item(SRV_UC_ACTIONS_REGISTRY, (action)->name, action)
+
 struct url_check_req_filter;
 struct cfg_request_filter {
      const struct url_check_req_filter *filter;
@@ -36,7 +89,8 @@ struct url_check_req_filter {
 typedef struct url_check_req_filter url_check_req_filter_t;
 
 void url_check_free_request_filters(ci_list_t *request_filters);
-int url_check_request_filters_apply(ci_request_t *req, ci_list_t *request_filters);
+/*Return SRV_UC_ACT_HEADMOD|SRV_UC_ACT_HEADMOD|SRV_UC_ACT_NONE*/
+unsigned int url_check_request_filters_apply(ci_request_t *req, ci_list_t *request_filters);
 int url_check_request_filters_cfg_parse(ci_list_t **request_filters, const char **argv);
 int url_check_request_filters_init();
 

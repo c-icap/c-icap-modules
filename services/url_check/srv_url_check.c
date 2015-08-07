@@ -38,17 +38,6 @@
 #include "request_filter.h"
 
 /*Structs for this module */
-enum http_methods { METHOD_UNKNOWN = 0, 
-                    HTTP_GET,
-                    HTTP_POST,
-                    HTTP_PUT,
-                    HTTP_HEAD,
-                    HTTP_CONNECT,
-                    HTTP_TRACE,
-                    HTTP_OPTIONS,
-                    HTTP_DELETE,
-                    METHOD_END
-};
 
 const char *http_methods_str[] = {
     "UNKNOWN",
@@ -72,24 +61,7 @@ const char *http_methods_str[] = {
 #define CHECK_SRV_NET  0x20
 #define CHECK_SIMPLE_URL 0x40
 
-#define MAX_URL_SIZE  65536
-#define MAX_PAGE_SIZE (MAX_URL_SIZE - CI_MAXHOSTNAMELEN)
-
 const char *protos[] = {"", "http", "https", "ftp", NULL};
-enum proto {UNKNOWN=0, HTTP, HTTPS, FTP};
-
-struct http_info {
-    int http_major;
-    int http_minor;
-    int method;
-    unsigned int port;
-    int proto;
-    char host[CI_MAXHOSTNAMELEN + 1];
-    char server_ip[64];                   /*I think ipv6 address needs about 32 bytes*/
-    char site[CI_MAXHOSTNAMELEN + 1];
-    char url[MAX_URL_SIZE];              /* I think it is enough */
-    char *args;
-};
 
 #define _MATCHDB_SZ 1024
 #define _DB_NAME_SIZE 128
@@ -99,7 +71,7 @@ struct match_info {
     char last_subcat[_DB_NAME_SIZE];
     char action_db[_DB_NAME_SIZE];
     const char *action_db_descr;
-    int action;
+    const struct url_check_action *action;
 };
 
 static void match_info_init(struct match_info *match_info);
@@ -121,7 +93,7 @@ struct lookup_db {
   unsigned int check;
   void *db_data;
   void * (*load_db)(struct lookup_db *db, const char *path);
-    int    (*lookup_db)(struct lookup_db *db, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
+    int    (*lookup_db)(struct lookup_db *db, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
   void   (*release_db)(struct lookup_db *db);
   struct lookup_db *next;
 };
@@ -133,24 +105,29 @@ static struct lookup_db *new_lookup_db(const char *name, const char *descr, int 
 				unsigned int check,
 				void *(*load_db)(struct lookup_db *ldb, const char *path),
 				int (*lookup_db)(struct lookup_db *ldb,
-                                                 struct http_info *http_info,
+                                                 struct url_check_http_info *http_info,
                                                  struct match_info *match_info,
                                                  ci_ptr_vector_t *subcats),
 				void (*release_db)(struct lookup_db *ldb)
 				);
 /* ALL lookup_db functions*/
-static int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
+static int all_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
 static void release_lookup_dbs();
 
-enum actions_enum { DB_ERROR=-1, DB_BLOCK=0, DB_PASS, DB_MATCH, DB_ACT_MAX};
+enum basic_actions_enum {DB_BLOCK=0, DB_PASS, DB_MATCH, DB_ACT_MAX};
 
-static const char *actions_str[] = {
+static const char *basic_actions_str[] = {
     "BLOCKED",
     "ALLOWED",
     "MATCHED"
 };
 
-#define ACTION_STR(id)(id>=0 && id<DB_ACT_MAX?actions_str[id]:"UNKNWON")
+#define BASIC_ACTION_STR(id)(id>=0 && id<DB_ACT_MAX?basic_actions_str[id]:"UNKNWON")
+
+
+static int SRV_UC_ACTIONS_REGISTRY_ID = -1;
+static void srv_uc_actions_init();
+static struct url_check_action *select_action(const char *action);
 
 struct cfg_action {
     ci_str_vector_t *addXHeaders;
@@ -160,6 +137,12 @@ struct cfg_action {
 };
 
 struct cfg_action *cfg_default_actions[DB_ACT_MAX];
+
+struct action {
+    const struct url_check_action *act;
+    void *data;
+    struct action *next;
+};
 
 struct access_db {
   struct lookup_db *db;
@@ -171,10 +154,11 @@ struct access_db {
 struct profile {
   char *name;
   ci_access_entry_t *access_list;
-  struct access_db *dbs;
+  struct action *actions;
   struct cfg_action *cfg_actions[DB_ACT_MAX];
   struct profile *next;
 };
+void profile_release();
 
 static struct profile *PROFILES = NULL;
 int EARLY_RESPONSES = 1;
@@ -260,12 +244,11 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 static int URL_CHECK_DATA_POOL = -1;
 struct url_check_data {
      struct body_data body;
-     struct http_info httpinf;
-     int denied;
-     int modified;
+     struct url_check_http_info httpinf;
+     unsigned int status;
      struct match_info match_info;
      const struct profile *profile;
-     const struct cfg_action *action;
+     const struct cfg_action *cfg_action;
 };
 
 
@@ -302,6 +285,7 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
      if(!int_db || !add_lookup_db(int_db))
          return CI_ERROR;
 
+     srv_uc_actions_init();
      url_check_request_filters_init();
      return CI_OK;
 }
@@ -319,6 +303,8 @@ void url_check_close_service()
             }
         }
     }
+
+    profile_release();
     ci_object_pool_unregister(URL_CHECK_DATA_POOL);
     release_lookup_dbs();
 }
@@ -327,8 +313,8 @@ void url_check_close_service()
 void *url_check_init_request_data(ci_request_t * req)
 {
      struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
-     uc->denied = 0;
-     uc->modified = 0;
+     uc->status = 0;
+     uc->cfg_action = NULL;
      memset(&uc->body, 0, sizeof(struct body_data));
      match_info_init(&uc->match_info);
      return uc;      /*Get from a pool of pre-allocated structs better...... */
@@ -374,17 +360,17 @@ int get_method(const char *buf, const char **end)
     int i;
     l = strspn(buf, " \n\r\t");
     s = buf+l;
-    for (i = 1; i < METHOD_END;i++) {
+    for (i = 1; i < UC_METHOD_END;i++) {
         if (strncasecmp_word(http_methods_str[i], s, end) == 0) {
             return i;
         }
     }
     l = strcspn(s, " \n\r\t");
     *end = s + l;
-    return METHOD_UNKNOWN;
+    return UC_METHOD_UNKNOWN;
 }
 
-int parse_connect_url(struct http_info *httpinf, const char *buf, const char **end)
+int parse_connect_url(struct url_check_http_info *httpinf, const char *buf, const char **end)
 {
     const char *str = buf;
     char *e;
@@ -408,31 +394,42 @@ int parse_connect_url(struct http_info *httpinf, const char *buf, const char **e
         str = e;
     }
     *end = str;
-    httpinf->proto = HTTPS;
+    httpinf->proto = UC_PROTO_HTTPS;
+    if (httpinf->port)
+        snprintf(httpinf->raw_url, MAX_URL_SIZE, "%s:%d", httpinf->url, httpinf->port);
+    else
+        strcpy(httpinf->raw_url, httpinf->url);
     return 1;
 }
 
 /*Macro to convert a char hex digit to numeric*/
 #define ctox(h) (h >= 'A'? (toupper(h) - 'A' + 10) : toupper(h) - '0')
 
-int parse_url(struct http_info *httpinf, const char *buf, const char **end)
+int parse_url(struct url_check_http_info *httpinf, const char *buf, const char **end)
 {
     char c;
     char *tmp;
     const char *str = buf;
-    size_t url_len;
+    size_t url_len, raw_url_len;
     if ((tmp=strstr(str,"://"))) {	 
         httpinf->proto = get_protocol(str, tmp-str);
+        raw_url_len = tmp-str + 3;
+        if (raw_url_len > 10) /*This is does not look like a protocol*/
+            return 0;
+        strncpy(httpinf->raw_url, str, raw_url_len);
         str = tmp+3;
         url_len = 0;
+        /*CI_MAXHOSTNAMELEN is significant smaller than the httpinf->[url|raw_url]*/
         while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && url_len < CI_MAXHOSTNAMELEN){
             httpinf->site[url_len] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
             httpinf->url[url_len] = httpinf->site[url_len];
+            httpinf->raw_url[raw_url_len++] = httpinf->site[url_len];
             url_len++;
             str++;
         }
         httpinf->site[url_len] = '\0';
         httpinf->url[url_len] = '\0';
+        httpinf->raw_url[raw_url_len] = '\0';
         if(*str==':'){
             httpinf->port = strtol(str+1,&tmp,10);
             if(!tmp || *tmp!='/') {
@@ -446,12 +443,18 @@ int parse_url(struct http_info *httpinf, const char *buf, const char **end)
         strcpy(httpinf->url, httpinf->host);
         strcpy(httpinf->site, httpinf->host);
         url_len = strlen(httpinf->url);
+        raw_url_len = snprintf(httpinf->raw_url, MAX_URL_SIZE, "http://%s", httpinf->host);
+        if (raw_url_len >= MAX_URL_SIZE) /*It is not possible but just in case...*/
+            return 0;
         // httpinf->port = 80;
-        httpinf->proto = HTTP;
+        httpinf->proto = UC_PROTO_HTTP;
+        httpinf->transparent = 1;
     }
 
-    while (*str != ' ' && *str != '\0' && url_len < MAX_PAGE_SIZE) {  /*copy page to the struct. */
+    /*Check with raw_url_len<MAX_URL_LEN is enough url_len is smallen tahn raw_url_len*/
+    while (*str != ' ' && *str != '\0' && raw_url_len + 3 < MAX_URL_SIZE) {  /*copy page to the struct. */
         if (*str == '?' && ! httpinf->args) {
+            httpinf->raw_url[raw_url_len++] = *str;
             httpinf->url[url_len++] = *str++;
             httpinf->args = &(httpinf->url[url_len]);             
         } else  if (*str == '%' && 
@@ -464,25 +467,30 @@ int parse_url(struct http_info *httpinf, const char *buf, const char **end)
             /*if it is not space, '+', '%' and it is not 7f=127*/
             if (strchr(" +%?", c) == NULL && c < 127) {
                 httpinf->url[url_len++] = c;
+                strncpy(httpinf->raw_url+raw_url_len, str, 3);
+                raw_url_len +=3;
                 str += 3;
             }
             else
-                httpinf->url[url_len++] = *str++;
+                httpinf->raw_url[raw_url_len++] = httpinf->url[url_len++] = *str++;
         }
         else //TODO: maybe convert to %xx any non asciii char
-            httpinf->url[url_len++] = *str++;
+            httpinf->raw_url[raw_url_len++] = httpinf->url[url_len++] = *str++;
     }
 
     httpinf->url[url_len] = '\0';
+    httpinf->url_size = url_len;
+    httpinf->raw_url[raw_url_len] = '\0';
+    httpinf->raw_url_size = raw_url_len;
     *end = str;
     return 1;
 }
 
-int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
-                  struct http_info *httpinf)
+int get_http_info(ci_request_t * req, struct url_check_http_info *httpinf)
 {
      const char *str;
      char *tmp;
+     ci_headers_list_t *req_header;
 
      /*Initialize htto_info struct*/
      httpinf->url[0]='\0';
@@ -490,11 +498,15 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      httpinf->site[0] = '\0';
      httpinf->host[0] = '\0';
      httpinf->server_ip[0] = '\0';
-     httpinf->method = METHOD_UNKNOWN;
+     httpinf->method = UC_METHOD_UNKNOWN;
      httpinf->port = 0;
-     httpinf->proto = UNKNOWN;
+     httpinf->proto = UC_PROTO_UNKNOWN;
      httpinf->http_major = -1;
      httpinf->http_minor = -1;
+     httpinf->transparent = 0;
+
+     if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
+         return 0;
 
      /*Now get the site name */
      str = ci_headers_value(req_header, "Host");
@@ -516,7 +528,7 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      httpinf->method = get_method(str, &str);
      while (*str == ' ') str++;
 
-     if (httpinf->method == HTTP_CONNECT) {
+     if (httpinf->method == UC_HTTP_CONNECT) {
          if (!parse_connect_url(httpinf, str, &str))
              return 0;
      }
@@ -542,12 +554,13 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      return 1;
 }
 
-static void apply_actions(ci_request_t *req, int action)
+static unsigned int apply_actions(ci_request_t *req, int action)
 {
      int i;
      const char *head;
      char buf[1024];
      ci_membuf_t *err_page = NULL;
+     unsigned int status = 0;
      const struct cfg_action *cfg_action = NULL;
      struct url_check_data *uc = ci_service_data(req);     
      const struct profile *profile = uc->profile;
@@ -560,9 +573,10 @@ static void apply_actions(ci_request_t *req, int action)
                     ci_icap_add_xheader(req, buf);
                }
           }
-          uc->modified = url_check_request_filters_apply(req, cfg_action->request_filters);
+          /*SRV_UC_ACT_HEADMOD or SRV_UC_ACT_NONE*/
+          status = url_check_request_filters_apply(req, cfg_action->request_filters);
      }
-     uc->action = cfg_action;
+     uc->cfg_action = cfg_action;
 
      if (action == DB_BLOCK) {
           ci_stat_uint64_inc(UC_CNT_BLOCKED, 1);
@@ -570,7 +584,7 @@ static void apply_actions(ci_request_t *req, int action)
           ci_debug_printf(9, "srv_url_check: Oh!!! we are going to deny this site.....\n");
 
           if (!cfg_action || cfg_action->errorPageOnBlock) {
-              uc->denied = 1;
+              status |= SRV_UC_ACT_ERRORPAGE;
               err_page = build_error_page(req);
               body_data_init(&uc->body, ERROR_PAGE, 0, err_page);
           }
@@ -579,15 +593,14 @@ static void apply_actions(ci_request_t *req, int action)
          ci_stat_uint64_inc(UC_CNT_MATCHED, 1);
      else if (action == DB_PASS)
          ci_stat_uint64_inc(UC_CNT_ALLOWED, 1);
-
-
+     return status;
 }
 
 static void build_icap_reply_headers(ci_request_t *req)
 {
      struct url_check_data *uc = ci_service_data(req);     
      const struct profile *profile = uc->profile;
-     const struct cfg_action *cfg_action = uc->action;
+     const struct cfg_action *cfg_action = uc->cfg_action;
      int addDefaultXHeaders = 1;
      char buf[1024];
 
@@ -613,10 +626,10 @@ static void build_icap_reply_headers(ci_request_t *req)
           buf[sizeof(buf)-1] = '\0';
           ci_icap_add_xheader(req, buf);         
      }
-     if (uc->match_info.action >=0) {
-          ci_request_set_str_attribute(req,"url_check:action", ACTION_STR(uc->match_info.action));
+     if (uc->match_info.action != NULL) {
+          ci_request_set_str_attribute(req,"url_check:action", uc->match_info.action->action_str);
           if (addDefaultXHeaders) {
-               snprintf(buf, sizeof(buf), "X-Response-Info: %s", ACTION_STR(uc->match_info.action));
+               snprintf(buf, sizeof(buf), "X-Response-Info: %s", uc->match_info.action->action_str);
                buf[sizeof(buf)-1] = '\0';
                ci_icap_add_xheader(req, buf);
           }
@@ -626,19 +639,19 @@ static void build_icap_reply_headers(ci_request_t *req)
                    buf[sizeof(buf)-1] = '\0';
                    ci_request_set_str_attribute(req,"url_check:action_cat", buf);
                    ci_debug_printf(5, "srv_url_check: %s: %s{%s}, http url: %s\n",
-                                   ACTION_STR(uc->match_info.action),
+                                   uc->match_info.action->action_str,
                                    uc->match_info.action_db,
                                    uc->match_info.last_subcat,
                                    uc->httpinf.url);
-                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, ACTION_STR(uc->match_info.action));
+                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, uc->match_info.action->action_str);
               }
               else {
                    ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
                    ci_debug_printf(5, "srv_url_check: %s: %s, http url: %s\n",
-                                   ACTION_STR(uc->match_info.action),
+                                   uc->match_info.action->action_str,
                                    uc->match_info.action_db,
                                    uc->httpinf.url);
-                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, uc->match_info.action->action_str);
               }
               if (addDefaultXHeaders) {
                    buf[sizeof(buf)-1] = '\0';
@@ -675,22 +688,17 @@ static ci_membuf_t *build_error_page(ci_request_t *req)
     return err_page;
 }
 
-static int profile_access(ci_request_t *req, const struct profile *prof, struct http_info *info, struct match_info *match_info);
+static int profile_access(ci_request_t *req, const struct profile *prof);
 
 int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t * req)
 {
-     ci_headers_list_t *req_header;
      struct url_check_data *uc = ci_service_data(req);     
      const struct profile *profile;
      int clen = 0;
-     int pass = DB_PASS;
 
-     if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
-          return CI_ERROR;
-
-     if (!get_http_info(req, req_header, &uc->httpinf)) { /*Unknown method or something else...*/
-         ci_debug_printf(2, "srv_url_check: Can not get required information to process request. Firstline: %s\n", req_header->headers[0]);
+     if (!get_http_info(req, &uc->httpinf)) { /*Unknown method or something else...*/
+         ci_debug_printf(2, "srv_url_check: Can not get required information to process request. Firstline: %s\n", ci_http_request(req));
 	 return CI_MOD_ALLOW204;
      }
 
@@ -706,9 +714,9 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
 
      ci_stat_uint64_inc(UC_CNT_REQUESTS, 1);
      
-     if ((pass=profile_access(req, profile, &uc->httpinf, &uc->match_info)) == DB_ERROR) {
+     if (!profile_access(req, profile)) {
           ci_debug_printf(1,"srv_url_check: Error searching in profile! Allow the request\n");
-	  return CI_MOD_ALLOW204;
+          return CI_MOD_ALLOW204;
      }
 
      build_icap_reply_headers(req);
@@ -720,9 +728,9 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
        informations about site and let http proxy to decide for an action.
      */
 
-     if (!uc->denied) {
+     if ((uc->status & SRV_UC_ACT_ERRORPAGE) == 0) {
           /*if we are inside preview negotiation or client allow204 responces oudsite of preview then */
-          if ((preview_data || ci_req_allow204(req)) && ! uc->modified)
+         if ((preview_data || ci_req_allow204(req)) && (uc->status & SRV_UC_ACT_MODIFIED) == 0)
                return CI_MOD_ALLOW204;
 
           /*
@@ -792,7 +800,7 @@ void match_info_init(struct match_info *match_info)
     match_info->matched_dbs[0] = '\0';
     match_info->match_length = 0;
     match_info->action_db[0] = '\0';
-    match_info->action = -1;
+    match_info->action = NULL;
     match_info->last_subcat[0] = '\0';
     match_info->action_db_descr = NULL;
 }
@@ -828,7 +836,7 @@ struct lookup_db *new_lookup_db(const char *name,
 				unsigned int check,
 				void *(*load_db)(struct lookup_db *,const char *path),
 				int (*lookup_db)(struct lookup_db *ldb, 
-                                                 struct http_info *http_info,
+                                                 struct url_check_http_info *http_info,
                                                  struct match_info *match_info,
                                                  ci_ptr_vector_t *subcats),
 				void (*release_db)(struct lookup_db *ldb)
@@ -948,6 +956,24 @@ struct profile *profile_search(const char *name)
   return NULL;
 }
 
+void profile_release()
+{
+    struct profile *tmp;
+    struct action *act;
+    while((tmp = PROFILES)) {
+        PROFILES = PROFILES->next;
+        free(tmp->name);
+        ci_access_entry_release(tmp->access_list);
+        while((act = tmp->actions)) {
+            tmp->actions = tmp->actions->next;
+            if (act->act && act->act->free && act->data)
+                act->act->free(act->data);
+            free(act);
+        }
+        free(tmp);
+    }
+}
+
 struct profile *profile_check_add(const char *name)
 {
   struct profile *tmp_profile;
@@ -959,7 +985,7 @@ struct profile *profile_check_add(const char *name)
     return NULL;
   tmp_profile->name = strdup(name);
   tmp_profile->access_list = NULL;
-  tmp_profile->dbs = NULL;
+  tmp_profile->actions = NULL;
   memset(tmp_profile->cfg_actions, 0, DB_ACT_MAX * sizeof(struct cfg_action *));
   tmp_profile->next = PROFILES;
 
@@ -968,10 +994,10 @@ struct profile *profile_check_add(const char *name)
   return (PROFILES = tmp_profile);
 }
 
-struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int type, ci_ptr_vector_t *cats)
+struct access_db *access_db_add_db(struct access_db **db_list, struct lookup_db *db, int type, ci_ptr_vector_t *cats)
 {
   struct access_db *new_adb,*tmp_adb;
-  if(!prof || !db)
+  if(!db_list || !db)
     return NULL;
   
   new_adb = malloc(sizeof(struct access_db));
@@ -979,11 +1005,11 @@ struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int
   new_adb->subcats = cats;
   new_adb->pass = type;
   new_adb->next = NULL;
-  
-  tmp_adb = prof->dbs;
-  if (!tmp_adb)
-    return (prof->dbs = new_adb);
 
+  if (!*db_list)
+      return (*db_list = new_adb);
+
+  tmp_adb = *db_list;
   while(tmp_adb->next!= NULL) 
     tmp_adb = tmp_adb->next;
   
@@ -992,44 +1018,31 @@ struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int
   return new_adb;
 }
 
-int profile_access(ci_request_t *req, const struct profile *prof, struct http_info *info, struct match_info *match_info)
+int profile_access(ci_request_t *req, const struct profile *prof)
 {
-  struct access_db *adb;
-  struct lookup_db *db = NULL;
-  adb=prof->dbs;
-  while (adb) {
-    db=adb->db;
-    if(!db) {
-      ci_debug_printf(1, "srv_url_check: Empty access DB in profile %s! is this possible????\n",
-		      prof->name);
-      return DB_ERROR;
-    }
+    int ret;
+    struct action *action = prof->actions;
+    struct url_check_data *uc = ci_service_data(req);
+    struct match_info *match_info =  &uc->match_info;
+    while (action) {
+        ret = action->act->action(req, action->act, action->data, &uc->httpinf);
+        if ( ret == SRV_UC_ACT_ERROR)
+            return 0;
+        /*update last action*/
+        if (ret != SRV_UC_ACT_NONE)
+            match_info->action = action->act;
+        ci_debug_printf(5, "Applied action: %s\n", action->act->action_str);
+        uc->status |= ret;
+        if ((ret & SRV_UC_ACT_ABORT)) /*abort*/
+            return 1;
 
-    if(!db->lookup_db) {
-      ci_debug_printf(1, "srv_url_check: The db %s in profile %s has not an lookup_db method implemented!\n",
-		      db->name,
-		      prof->name);
-      return DB_ERROR;
-    }
-    ci_debug_printf(5, "srv_url_check: Going to check the db %s for %s request\n", db->name, ACTION_STR(adb->pass));
-
-    if (db->lookup_db(db, info, match_info, adb->subcats)) {
-	ci_debug_printf(5, "srv_url_check: The db :%s matches! \n", db->name);
-        match_info->action = adb->pass;
-        apply_actions(req, match_info->action);
-        if(match_info->action != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
-            strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
-            match_info->action_db[_DB_NAME_SIZE - 1] = '\0';
-            match_info->action_db_descr = db->descr;
-            return match_info->action;
+        if ((ret & SRV_UC_ACT_REQMOD)) { /*request line modified, rebuild info*/
+            if (!get_http_info(req, &uc->httpinf))
+                return 0;
         }
+        action = action->next;
     }
-    adb=adb->next;
-  }
-  if(match_info->action < 0)
-      match_info->action = DB_PASS;
-
-  return DB_PASS;
+    return 1;
 }
 
 /*Should be moved to a utility library*/
@@ -1115,7 +1128,7 @@ static char *parse_argument(const char *arg, ci_ptr_vector_t **params)
 int cfg_default_action(const char *directive, const char **argv, void *setdata)
 {
     struct cfg_action **cfg_actions = (struct cfg_action **) setdata;
-    int action = DB_ERROR;
+    int action = -1;
     if(!argv[0] || !argv[1])
         return 0;
     if (strcmp(argv[0], "pass") == 0)
@@ -1156,51 +1169,49 @@ int cfg_default_action(const char *directive, const char **argv, void *setdata)
 
 int cfg_profile(const char *directive, const char **argv, void *setdata)
 {
-  int i,type=0;
   struct profile *prof;
-  struct lookup_db *db;
-  ci_ptr_vector_t *cats;
-  char *db_name;
+  const struct url_check_action *action = NULL;
+  struct action *act, *actions_list;
+  void *data;
 
   if(!argv[0] || !argv[1] || !argv[2])
     return 0;
   
-  prof=profile_check_add(argv[0]);
+  prof = profile_check_add(argv[0]);
 
-  if(strcasecmp(argv[1],"pass")==0)
-    type = DB_PASS;
-  else if(strcasecmp(argv[1],"block")==0)
-    type = DB_BLOCK;
-  else if(strcasecmp(argv[1],"match")==0)
-    type = DB_MATCH;
-  else if(strcasecmp(argv[1], "DefaultAction")==0) {
+  if(strcasecmp(argv[1], "DefaultAction") == 0) {
       return cfg_default_action("url_check.Profile xxx DefaultAction", argv + 2, prof->cfg_actions);
-  } else {
-    ci_debug_printf(1, "srv_url_check: Configuration error, expecting pass/block got %s\n", argv[1]);
-    return 0;
   }
 
-  ci_debug_printf(2, "srv_url_check: Add dbs to profile %s: ", argv[0]);
+  action = select_action(argv[1]);
 
-  for(i=2; argv[i] != NULL; i++) {
-    cats = NULL;
-    db_name = parse_argument(argv[i], &cats);
-    if (!db_name) {
-        ci_debug_printf(1, "srv_url_check: Configuration error or error allocation memory: %s ... %s\n", argv[0], argv[i]);
-        return 0;
-    }
-    db=search_lookup_db(db_name);
-    if(!db) {
-      ci_debug_printf(1,"srv_url_check: WARNING the lookup db %s does not exists!\n", db_name);
-    }
-    else {
-      ci_debug_printf(2,"%s ",db_name);
-      profile_add_db(prof, db, type, cats);
-    }
-    free(db_name);
-    db_name = NULL;
+  if (!action) {
+      ci_debug_printf(1, "srv_url_check: Parse error while parsing parameter '%s': wrong action: %s\n", argv[0], argv[1]);
+      return 0;
   }
-  ci_debug_printf(2,"\n");
+
+  if (!(data = action->cfg((argv+1)))) {
+      ci_debug_printf(1, "srv_url_check: Parse error while parsing parameter '%s'\n", argv[0]);
+      return 0;
+  }
+  act = (struct action *) malloc(sizeof(struct action));
+  if (!act) {
+      ci_debug_printf(1, "srv_url_check: Memory allocation error while parsing parameter '%s'\n", argv[0]);
+      return 0;
+  }
+  act->data = data;
+  act->act = action;
+  act->next = NULL;
+
+  if (!prof->actions)
+      prof->actions = act;
+  else {
+      actions_list = prof->actions;
+      while (actions_list->next != NULL)
+          actions_list = actions_list->next;
+      actions_list->next = act;
+  }
+
   return 1;
 }
 
@@ -1256,7 +1267,7 @@ void *sg_load_db(struct lookup_db *db, const char *path)
   return (db->db_data = (void *)sg_db);
 }
 
-int sg_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
+int sg_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
 {
   sg_db_t *sg_db = (sg_db_t *)ldb->db_data;
   if (!sg_db) {
@@ -1449,7 +1460,7 @@ static const char *check_sub_categories(const char *key, char **vals, ci_ptr_vec
     return NULL;
 }
 
-int lt_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
+int lt_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
 {
   char str_subcats[1024];
   char **vals=NULL;
@@ -1643,12 +1654,155 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata)
 
 /**********************************************************************/
 /* Other */
-int all_lookup_db(struct lookup_db *ldb, struct http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
+int all_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats)
 {
     match_info_append_db(match_info, ldb->name, NULL);
   return 1;
 }
 
+/*********************************************************************/
+/* Basic actions   */
+void *cfg_basic_actions(const char **argv);
+unsigned int action_basic_action(ci_request_t *req, const struct url_check_action *act, const void *data, struct url_check_http_info *);
+void free_basic_action(void *data);
+struct url_check_action pass_basic_action = {
+    "pass",
+    "ALLOWED",
+    action_basic_action,
+    cfg_basic_actions,
+    free_basic_action
+};
+
+struct url_check_action block_basic_action = {
+    "block",
+    "BLOCKED",
+    action_basic_action,
+    cfg_basic_actions,
+    free_basic_action
+};
+
+struct url_check_action match_basic_action = {
+    "match",
+    "MATCHED",
+    action_basic_action,
+    cfg_basic_actions,
+    free_basic_action
+};
+
+
+void *cfg_basic_actions(const char **argv)
+{
+    int i,type=0;
+    struct lookup_db *db;
+    ci_ptr_vector_t *cats;
+    char *db_name;
+    struct access_db *adb = NULL;
+
+    if(strcasecmp(argv[0],"pass")==0)
+        type = DB_PASS;
+    else if(strcasecmp(argv[0],"block")==0)
+        type = DB_BLOCK;
+    else if(strcasecmp(argv[0],"match")==0)
+        type = DB_MATCH;
+    else {
+        ci_debug_printf(1, "srv_url_check: Configuration error, expecting pass/block got %s\n", argv[1]);
+        return 0;
+    }
+
+    ci_debug_printf(2, "srv_url_check: Add dbs to action\n");
+    for(i =  1; argv[i] != NULL; i++) {
+        cats = NULL;
+        db_name = parse_argument(argv[i], &cats);
+        if (!db_name) {
+            ci_debug_printf(1, "srv_url_check: Configuration error or error allocation memory: %s ... %s\n", argv[0], argv[i]);
+            return NULL;
+        }
+        db=search_lookup_db(db_name);
+        if(!db) {
+            ci_debug_printf(1,"srv_url_check: WARNING the lookup db %s does not exists!\n", db_name);
+        }
+        else {
+            ci_debug_printf(2,"%s ",db_name);
+            access_db_add_db(&adb, db, type, cats);
+        }
+        free(db_name);
+        db_name = NULL;
+    }
+    ci_debug_printf(2,"\n");
+
+    return adb;
+}
+
+unsigned int action_basic_action(ci_request_t *req, const struct url_check_action *act, const void *data, struct url_check_http_info *aninf)
+{
+  struct url_check_data *uc = ci_service_data(req);
+  struct url_check_http_info *info =  &uc->httpinf;
+  struct match_info *match_info =  &uc->match_info;
+  const struct access_db *adb = (struct access_db *)data;
+  struct lookup_db *db = NULL;
+  unsigned int status = 0;
+
+  while (adb) {
+    db=adb->db;
+    if(!db) {
+      ci_debug_printf(1, "srv_url_check: Empty access DB in access db list! is this possible????\n");
+      return SRV_UC_ACT_ERROR;
+    }
+
+    if(!db->lookup_db) {
+      ci_debug_printf(1, "srv_url_check: The db %s has not an lookup_db method implemented!\n",
+		      db->name);
+      return SRV_UC_ACT_ERROR;
+    }
+    ci_debug_printf(5, "srv_url_check: Going to check the db %s for %s request\n", db->name, BASIC_ACTION_STR(adb->pass));
+
+    if (db->lookup_db(db, info, match_info, adb->subcats)) {
+	ci_debug_printf(5, "srv_url_check: The db :%s matches! \n", db->name);
+        status |= apply_actions(req, adb->pass);
+        if(adb->pass != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
+            strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
+            match_info->action_db[_DB_NAME_SIZE - 1] = '\0';
+            match_info->action_db_descr = db->descr;
+            return (status | SRV_UC_ACT_ABORT); /*abort here*/
+        }
+    }
+    adb=adb->next;
+  }
+
+  return status;
+}
+
+void free_basic_action(void *data)
+{
+    struct access_db *adb = (struct access_db *)data;
+    struct access_db *tmp = adb;
+    int i;
+    struct subcats_data *sdata;
+    while((tmp = adb)) {
+        adb = adb->next;
+        if (tmp->subcats) {            
+            for (i = 0; (sdata = (struct subcats_data *)ci_ptr_vector_get(tmp->subcats, i)) != NULL; i++) {
+                free((void *)sdata->str);
+                free(sdata);
+            }
+            ci_ptr_vector_destroy(tmp->subcats);
+        }
+        free(tmp);
+    }
+}
+
+static void srv_uc_actions_init()
+{
+    SRV_UC_ACTIONS_REGISTRY_ID = ci_registry_create(SRV_UC_ACTIONS_REGISTRY);
+    srv_uc_register_req_action(&pass_basic_action);
+    srv_uc_register_req_action(&block_basic_action);
+    srv_uc_register_req_action(&match_basic_action);
+}
+
+static struct url_check_action *select_action(const char *action)
+{
+    return (struct url_check_action *)ci_registry_id_get_item(SRV_UC_ACTIONS_REGISTRY_ID, action);
+}
 
 /*****************************/
 /* Formating table functions */
