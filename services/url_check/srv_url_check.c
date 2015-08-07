@@ -35,6 +35,7 @@
 #include "sguardDB.h"
 #endif
 #include "url_check_body.h"
+#include "request_filter.h"
 
 /*Structs for this module */
 enum http_methods { METHOD_UNKNOWN = 0, 
@@ -155,6 +156,7 @@ struct cfg_action {
     ci_str_vector_t *addXHeaders;
     int defaultXHeaders;
     int errorPageOnBlock;
+    ci_list_t *request_filters;
 };
 
 struct cfg_action *cfg_default_actions[DB_ACT_MAX];
@@ -198,8 +200,9 @@ void url_check_close_service();
 
 /*Profile functions */
 static struct profile *profile_search(const char *name);
-static struct profile *profile_select(ci_request_t *req);
+static const struct profile *profile_select(ci_request_t *req);
 
+static ci_membuf_t *build_error_page(ci_request_t *req);
 
 /*********************/
 /* Formating table   */
@@ -259,7 +262,10 @@ struct url_check_data {
      struct body_data body;
      struct http_info httpinf;
      int denied;
-    struct match_info match_info;
+     int modified;
+     struct match_info match_info;
+     const struct profile *profile;
+     const struct cfg_action *action;
 };
 
 
@@ -292,14 +298,27 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
      int_db = new_lookup_db("ALL", "All (Internal DB)", DB_INTERNAL, CHECK_HOST, NULL,
 			    all_lookup_db,
 			    NULL);
-     if(int_db)
-       return add_lookup_db(int_db);
 
+     if(!int_db || !add_lookup_db(int_db))
+         return CI_ERROR;
+
+     url_check_request_filters_init();
      return CI_OK;
 }
 
 void url_check_close_service()
 {
+    int i;
+    for (i = 0; i < DB_ACT_MAX; ++i ) {
+        if (cfg_default_actions[i]) {
+            if (cfg_default_actions[i]->addXHeaders)
+                ci_str_vector_destroy(cfg_default_actions[i]->addXHeaders);
+            if (cfg_default_actions[i]->request_filters != NULL) {
+                url_check_free_request_filters(cfg_default_actions[i]->request_filters);
+                cfg_default_actions[i]->request_filters = NULL;
+            }
+        }
+    }
     ci_object_pool_unregister(URL_CHECK_DATA_POOL);
     release_lookup_dbs();
 }
@@ -309,6 +328,7 @@ void *url_check_init_request_data(ci_request_t * req)
 {
      struct url_check_data *uc = ci_object_pool_alloc(URL_CHECK_DATA_POOL);
      uc->denied = 0;
+     uc->modified = 0;
      memset(&uc->body, 0, sizeof(struct body_data));
      match_info_init(&uc->match_info);
      return uc;      /*Get from a pool of pre-allocated structs better...... */
@@ -522,22 +542,149 @@ int get_http_info(ci_request_t * req, ci_headers_list_t * req_header,
      return 1;
 }
 
-static int profile_access(struct profile *prof, struct http_info *info, struct match_info *match_info);
+static void apply_actions(ci_request_t *req, int action)
+{
+     int i;
+     const char *head;
+     char buf[1024];
+     ci_membuf_t *err_page = NULL;
+     const struct cfg_action *cfg_action = NULL;
+     struct url_check_data *uc = ci_service_data(req);     
+     const struct profile *profile = uc->profile;
+
+     if ((cfg_action = profile->cfg_actions[action]) || (cfg_action = cfg_default_actions[action])) {
+          if (cfg_action->addXHeaders) {
+               for (i = 0; (head = ci_str_vector_get(cfg_action->addXHeaders, i)) != NULL; ++i) {
+                    ci_format_text(req, head, buf, sizeof(buf), srv_urlcheck_format_table);
+                    buf[sizeof(buf)-1] = '\0';
+                    ci_icap_add_xheader(req, buf);
+               }
+          }
+          uc->modified = url_check_request_filters_apply(req, cfg_action->request_filters);
+     }
+     uc->action = cfg_action;
+
+     if (action == DB_BLOCK) {
+          ci_stat_uint64_inc(UC_CNT_BLOCKED, 1);
+          /*The URL is not a good one so.... */
+          ci_debug_printf(9, "srv_url_check: Oh!!! we are going to deny this site.....\n");
+
+          if (!cfg_action || cfg_action->errorPageOnBlock) {
+              uc->denied = 1;
+              err_page = build_error_page(req);
+              body_data_init(&uc->body, ERROR_PAGE, 0, err_page);
+          }
+     }
+     else if (action == DB_MATCH)
+         ci_stat_uint64_inc(UC_CNT_MATCHED, 1);
+     else if (action == DB_PASS)
+         ci_stat_uint64_inc(UC_CNT_ALLOWED, 1);
+
+
+}
+
+static void build_icap_reply_headers(ci_request_t *req)
+{
+     struct url_check_data *uc = ci_service_data(req);     
+     const struct profile *profile = uc->profile;
+     const struct cfg_action *cfg_action = uc->action;
+     int addDefaultXHeaders = 1;
+     char buf[1024];
+
+     if (cfg_action && !cfg_action->defaultXHeaders)
+          addDefaultXHeaders = 0;
+
+     if (addDefaultXHeaders) {
+          snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", profile->name);
+          buf[sizeof(buf)-1] = '\0';
+          ci_icap_add_xheader(req, buf);
+     }
+
+     if (uc->match_info.matched_dbs[0]) {
+          ci_request_set_str_attribute(req,"url_check:matched_cat", uc->match_info.matched_dbs);
+          if (addDefaultXHeaders) {
+               snprintf(buf, sizeof(buf), "X-Attribute: %s", uc->match_info.matched_dbs);
+               buf[sizeof(buf)-1] = '\0';
+               ci_icap_add_xheader(req, buf);
+          }
+     }
+     if (uc->match_info.match_length && addDefaultXHeaders) {
+          snprintf(buf, sizeof(buf), "X-Attribute-Prefix: %d", uc->match_info.match_length);
+          buf[sizeof(buf)-1] = '\0';
+          ci_icap_add_xheader(req, buf);         
+     }
+     if (uc->match_info.action >=0) {
+          ci_request_set_str_attribute(req,"url_check:action", ACTION_STR(uc->match_info.action));
+          if (addDefaultXHeaders) {
+               snprintf(buf, sizeof(buf), "X-Response-Info: %s", ACTION_STR(uc->match_info.action));
+               buf[sizeof(buf)-1] = '\0';
+               ci_icap_add_xheader(req, buf);
+          }
+          if (uc->match_info.action_db[0] != '\0') {
+              if (uc->match_info.last_subcat[0] != '\0') {
+                   snprintf(buf, sizeof(buf), "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
+                   buf[sizeof(buf)-1] = '\0';
+                   ci_request_set_str_attribute(req,"url_check:action_cat", buf);
+                   ci_debug_printf(5, "srv_url_check: %s: %s{%s}, http url: %s\n",
+                                   ACTION_STR(uc->match_info.action),
+                                   uc->match_info.action_db,
+                                   uc->match_info.last_subcat,
+                                   uc->httpinf.url);
+                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, ACTION_STR(uc->match_info.action));
+              }
+              else {
+                   ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
+                   ci_debug_printf(5, "srv_url_check: %s: %s, http url: %s\n",
+                                   ACTION_STR(uc->match_info.action),
+                                   uc->match_info.action_db,
+                                   uc->httpinf.url);
+                   snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
+              }
+              if (addDefaultXHeaders) {
+                   buf[sizeof(buf)-1] = '\0';
+                   ci_icap_add_xheader(req, buf);
+              }
+         }
+     }
+}
+
+static ci_membuf_t *build_error_page(ci_request_t *req)
+{
+    char buf[1024];
+    const char *lang;
+    ci_membuf_t *err_page;
+    ci_http_response_create(req, 1, 1); /*Build the responce headers */
+    ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
+    ci_http_response_add_header(req, "Server: C-ICAP");
+    ci_http_response_add_header(req, "Content-Type: text/html");
+    ci_http_response_add_header(req, "Connection: close");
+
+    err_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
+    /*Are we sure that the txt_template code does not return a NULL page?
+      Well, yes ...
+    */
+
+    lang = ci_membuf_attr_get(err_page, "lang");
+    if (lang) {
+        snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
+        buf[sizeof(buf)-1] = '\0';
+        ci_http_response_add_header(req, buf);
+    }
+    else
+        ci_http_response_add_header(req, "Content-Language: en");
+    return err_page;
+}
+
+static int profile_access(ci_request_t *req, const struct profile *prof, struct http_info *info, struct match_info *match_info);
 
 int url_check_check_preview(char *preview_data, int preview_data_len,
                             ci_request_t * req)
 {
      ci_headers_list_t *req_header;
-     ci_membuf_t *err_page = NULL;
-     char buf[1024];
-     const char *lang, *head;
      struct url_check_data *uc = ci_service_data(req);     
-     struct profile *profile;
+     const struct profile *profile;
      int clen = 0;
      int pass = DB_PASS;
-     int i;
-     int addDefaultXHeaders = 1, errorPageOnBlock = 1;
-     struct cfg_action *cfg_action = NULL;
 
      if ((req_header = ci_http_request_headers(req)) == NULL) /*It is not possible but who knows ..... */
           return CI_ERROR;
@@ -556,81 +703,15 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           ci_debug_printf(1, "srv_url_check: No Profile configured! Allowing the request...\n");
 	  return CI_MOD_ALLOW204;
      }
+
+     ci_stat_uint64_inc(UC_CNT_REQUESTS, 1);
      
-     if ((pass=profile_access(profile, &uc->httpinf, &uc->match_info)) == DB_ERROR) {
+     if ((pass=profile_access(req, profile, &uc->httpinf, &uc->match_info)) == DB_ERROR) {
           ci_debug_printf(1,"srv_url_check: Error searching in profile! Allow the request\n");
 	  return CI_MOD_ALLOW204;
      }
 
-     ci_stat_uint64_inc(UC_CNT_REQUESTS, 1);
-
-     if ((cfg_action = profile->cfg_actions[pass]) || (cfg_action = cfg_default_actions[pass])) {
-         if (!cfg_action->defaultXHeaders)
-             addDefaultXHeaders = 0;
-         if (!cfg_action->errorPageOnBlock)
-             errorPageOnBlock = 0;
-
-         if (cfg_action->addXHeaders) {
-             for (i = 0; (head = ci_str_vector_get(cfg_action->addXHeaders, i)) != NULL; ++i) {
-                 ci_format_text(req, head, buf, sizeof(buf), srv_urlcheck_format_table);
-                 buf[sizeof(buf)-1] = '\0';
-                 ci_icap_add_xheader(req, buf);
-             }
-         }
-     }
-
-     if (addDefaultXHeaders) {
-         snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", profile->name);
-         buf[sizeof(buf)-1] = '\0';
-         ci_icap_add_xheader(req, buf);
-     }
-
-     if (uc->match_info.matched_dbs[0]) {
-         ci_request_set_str_attribute(req,"url_check:matched_cat", uc->match_info.matched_dbs);
-         if (addDefaultXHeaders) {
-             snprintf(buf, sizeof(buf), "X-Attribute: %s", uc->match_info.matched_dbs);
-             buf[sizeof(buf)-1] = '\0';
-             ci_icap_add_xheader(req, buf);
-         }
-     }
-     if (uc->match_info.match_length && addDefaultXHeaders) {
-         snprintf(buf, sizeof(buf), "X-Attribute-Prefix: %d", uc->match_info.match_length);
-         buf[sizeof(buf)-1] = '\0';
-         ci_icap_add_xheader(req, buf);         
-     }
-     if (uc->match_info.action >=0) {
-         ci_request_set_str_attribute(req,"url_check:action", ACTION_STR(uc->match_info.action));
-         if (addDefaultXHeaders) {
-             snprintf(buf, sizeof(buf), "X-Response-Info: %s", ACTION_STR(uc->match_info.action));
-             buf[sizeof(buf)-1] = '\0';
-             ci_icap_add_xheader(req, buf);
-         }
-         if (uc->match_info.action_db[0] != '\0') {
-             if (uc->match_info.last_subcat[0] != '\0') {
-                 snprintf(buf, sizeof(buf), "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
-                 buf[sizeof(buf)-1] = '\0';
-                 ci_request_set_str_attribute(req,"url_check:action_cat", buf);
-                 ci_debug_printf(5, "srv_url_check: %s: %s{%s}, http url: %s\n",
-                        ACTION_STR(uc->match_info.action),
-                        uc->match_info.action_db,
-                        uc->match_info.last_subcat,
-                        uc->httpinf.url);
-                 snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s{%s} is %s", uc->match_info.action_db, uc->match_info.last_subcat, ACTION_STR(uc->match_info.action));
-             }
-             else {
-                 ci_request_set_str_attribute(req,"url_check:action_cat", uc->match_info.action_db);
-                 ci_debug_printf(5, "srv_url_check: %s: %s, http url: %s\n",
-                        ACTION_STR(uc->match_info.action),
-                        uc->match_info.action_db,
-                        uc->httpinf.url);
-                 snprintf(buf, sizeof(buf), "X-Response-Desc: URL category %s is %s", uc->match_info.action_db, ACTION_STR(uc->match_info.action));
-             }
-             if (addDefaultXHeaders) {
-                 buf[sizeof(buf)-1] = '\0';
-                 ci_icap_add_xheader(req, buf);
-             }
-         }
-     }
+     build_icap_reply_headers(req);
 
      /*
        TODO: When 206 ICAP responses be supported implement configuration parameter
@@ -639,47 +720,9 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
        informations about site and let http proxy to decide for an action.
      */
 
-     if (pass == DB_BLOCK) {
-          ci_stat_uint64_inc(UC_CNT_BLOCKED, 1);
-          /*The URL is not a good one so.... */
-          ci_debug_printf(9, "srv_url_check: Oh!!! we are going to deny this site.....\n");
-
-          if (errorPageOnBlock) {
-              uc->denied = 1;
-              ci_http_response_create(req, 1, 1); /*Build the responce headers */
-              ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
-              ci_http_response_add_header(req, "Server: C-ICAP");
-              ci_http_response_add_header(req, "Content-Type: text/html");
-              ci_http_response_add_header(req, "Connection: close");
-
-              err_page = ci_txt_template_build_content(req, "srv_url_check", "DENY", srv_urlcheck_format_table);
-              lang = ci_membuf_attr_get(err_page, "lang");
-              if (lang) {
-                  snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
-                  buf[sizeof(buf)-1] = '\0';
-                  ci_http_response_add_header(req, buf);
-              }
-              else
-                  ci_http_response_add_header(req, "Content-Language: en");
-              /*Are we sure that the txt_template code does not return a NULL page?
-                Well, yes ...
-              */
-              body_data_init(&uc->body, ERROR_PAGE, 0, err_page);
-          }
-     }
-     else {
-         if (uc->match_info.matched_dbs[0]) {
-             if (uc->match_info.action == DB_MATCH)
-                 ci_stat_uint64_inc(UC_CNT_MATCHED, 1);
-             else
-                 ci_stat_uint64_inc(UC_CNT_ALLOWED, 1);
-         }
-          /* else  no database matched*/
-     }
-
-     if (err_page == NULL) {
+     if (!uc->denied) {
           /*if we are inside preview negotiation or client allow204 responces oudsite of preview then */
-          if (preview_data || ci_req_allow204(req))
+          if ((preview_data || ci_req_allow204(req)) && ! uc->modified)
                return CI_MOD_ALLOW204;
 
           /*
@@ -688,10 +731,9 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
              Allocate a new body for it 
            */
           if (ci_req_hasbody(req)) {
-               clen = ci_http_content_length(req);
-               body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen, NULL);
+              clen = ci_http_content_length(req);
+              body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen, NULL);
           }
-
      }
 
      unlock_data(req);
@@ -870,9 +912,10 @@ void release_lookup_dbs()
 /*****************************************************************/
 /* Profile definitions                                           */
 
-struct profile *profile_select(ci_request_t *req)
+const struct profile *profile_select(ci_request_t *req)
 {
   struct profile *tmp_profile, *default_profile;
+  struct url_check_data *uc = ci_service_data(req);
   default_profile = NULL;
   tmp_profile = PROFILES;
   while(tmp_profile) {
@@ -881,7 +924,7 @@ struct profile *profile_select(ci_request_t *req)
           (ci_access_entry_match_request(tmp_profile->access_list, 
                                          req) == CI_ACCESS_ALLOW)) {
           ci_debug_printf(5, "url_check: profile %s matches!\n", tmp_profile->name);
-          return tmp_profile;
+          return (uc->profile = tmp_profile);
       }
     
       if (strcmp(tmp_profile->name,"default")==0)
@@ -890,7 +933,7 @@ struct profile *profile_select(ci_request_t *req)
       tmp_profile = tmp_profile->next;
   }
   ci_debug_printf(5, "url_check: Default profile selected!\n");
-  return default_profile;
+  return (uc->profile = default_profile);
 }
 
 struct profile *profile_search(const char *name)
@@ -949,7 +992,7 @@ struct access_db *profile_add_db(struct profile *prof, struct lookup_db *db, int
   return new_adb;
 }
 
-int profile_access(struct profile *prof, struct http_info *info, struct match_info *match_info)
+int profile_access(ci_request_t *req, const struct profile *prof, struct http_info *info, struct match_info *match_info)
 {
   struct access_db *adb;
   struct lookup_db *db = NULL;
@@ -973,6 +1016,7 @@ int profile_access(struct profile *prof, struct http_info *info, struct match_in
     if (db->lookup_db(db, info, match_info, adb->subcats)) {
 	ci_debug_printf(5, "srv_url_check: The db :%s matches! \n", db->name);
         match_info->action = adb->pass;
+        apply_actions(req, match_info->action);
         if(match_info->action != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
             strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
             match_info->action_db[_DB_NAME_SIZE - 1] = '\0';
@@ -1089,6 +1133,7 @@ int cfg_default_action(const char *directive, const char **argv, void *setdata)
         cfg_actions[action]->defaultXHeaders = 1;
         cfg_actions[action]->errorPageOnBlock = 1;
         cfg_actions[action]->addXHeaders = NULL;
+        cfg_actions[action]->request_filters = NULL;
     }
     if (strcasecmp(argv[1], "NoDefaultXHeaders") == 0) {
         cfg_actions[action]->defaultXHeaders = 0;
@@ -1102,7 +1147,7 @@ int cfg_default_action(const char *directive, const char **argv, void *setdata)
         if (!cfg_actions[action]->addXHeaders)
             cfg_actions[action]->addXHeaders = ci_str_vector_create(4096);
         ci_str_vector_add(cfg_actions[action]->addXHeaders, argv[2]);
-    } else {
+    } else if (!url_check_request_filters_cfg_parse(&(cfg_actions[action]->request_filters), argv + 1)){
         ci_debug_printf(1, "ERROR: wrong argument: %s\n", argv[1]);
         return 0;
     }
