@@ -629,7 +629,7 @@ int replacePartsToBody(ci_membuf_t *body, ci_membuf_t *newbody, ci_list_t *repla
         ci_membuf_write(newbody, s, pos - (s - data), 0);
         for (i = 0; i < strlen(replaceWithStr); ++i) {
             if (replaceWithStr[i] == '$' && (i == 0 || replaceWithStr[i-1] != '\\')
-                && replaceWithStr[i +1] > '0' && replaceWithStr[i +1] <= '9') {
+                && replaceWithStr[i +1] >= '0' && replaceWithStr[i +1] <= '9') {
                 ci_membuf_write(newbody, 
                                 data + rpart->matches[replaceWithStr[i + 1] - '0' ].s, 
                                 rpart->matches[replaceWithStr[i + 1] - '0' ].e - rpart->matches[replaceWithStr[i + 1] - '0' ].s,
