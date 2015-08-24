@@ -265,6 +265,12 @@ int url_check_init_service(ci_service_xdata_t * srv_xdata,
      xops = CI_XCLIENTIP | CI_XSERVERIP;
      xops |= CI_XAUTHENTICATEDUSER | CI_XAUTHENTICATEDGROUPS;
      ci_service_set_xopts(srv_xdata, xops);
+
+     /*Tell to the icap clients that we support 204 responses*/
+     ci_service_enable_204(srv_xdata);
+     /*Tell to the icap clients that we support 206 responses*/
+     ci_service_enable_206(srv_xdata);
+
      memset(cfg_default_actions, 0, sizeof(cfg_default_actions));
 
      /*initialize mempools          */
@@ -736,6 +742,11 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
              Allocate a new body for it 
            */
           if (ci_req_hasbody(req)) {
+              if (ci_allow206(req)) {
+                  ci_request_206_origin_body(req, 0);
+                  return CI_MOD_ALLOW206;
+              }
+
               clen = ci_http_content_length(req);
               body_data_init(&uc->body, EARLY_RESPONSES?RING:CACHED, clen, NULL);
           }
@@ -762,9 +773,11 @@ int url_check_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      int ret;
      struct url_check_data *uc = ci_service_data(req);
 
-     /*Here we are only if we */
-     if (!uc->body.type)
-          return CI_ERROR;
+     if (!uc->body.type) {
+          // probably 206 response.
+          *wlen = CI_EOF;
+          return CI_OK;
+     }
 
      ret = CI_OK;
 
