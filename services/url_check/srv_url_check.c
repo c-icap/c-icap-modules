@@ -162,6 +162,7 @@ void profile_release();
 
 static struct profile *PROFILES = NULL;
 int EARLY_RESPONSES = 1;
+int CONVERT_PERCENT_CODES = 1;
 
 /*Counters: */
 int UC_CNT_BLOCKED = -1;
@@ -212,6 +213,7 @@ int cfg_load_lt_db(const char *directive, const char **argv, void *setdata);
 int cfg_profile(const char *directive, const char **argv, void *setdata);
 int cfg_profile_access(const char *directive, const char **argv, void *setdata);
 int cfg_default_action(const char *directive, const char **argv, void *setdata);
+int cfg_convert_percent(const char *directive, const char **argv, void *setdata);
 /*Configuration Table .....*/
 static struct ci_conf_entry conf_variables[] = {
 #if defined(HAVE_BDB)
@@ -222,6 +224,7 @@ static struct ci_conf_entry conf_variables[] = {
   {"ProfileAccess", NULL, cfg_profile_access, NULL},
   {"EarlyResponses", &EARLY_RESPONSES, ci_cfg_onoff, NULL},
   {"DefaultAction", cfg_default_actions, cfg_default_action, NULL},
+  {"ConvertPercentCodesTo", NULL, cfg_convert_percent, NULL},
   {NULL, NULL, NULL, NULL}
 };
 
@@ -374,17 +377,14 @@ int parse_connect_url(struct url_check_http_info *httpinf, const char *buf, cons
 {
     const char *str = buf;
     char *e;
-    size_t ulen = 0;
+    size_t slen = 0;
     while (*str != '\0' && *str != ' ' &&  *str != ':' &&
            *str != '\r' && *str != '\n' 
            && *str != '\t') {
-        httpinf->url[ulen] = tolower(*str);
-        httpinf->site[ulen] = httpinf->url[ulen] ;
-        ulen++;
+        httpinf->site[slen++] = tolower(*str);
         str++;
     }
-    httpinf->url[ulen] = '\0';
-    httpinf->site[ulen] = '\0';
+    httpinf->site[slen] = '\0';
     if(*str==':'){
         httpinf->port = strtol(str+1,&e,10);
         if(!e) { /*parse error*/
@@ -396,9 +396,11 @@ int parse_connect_url(struct url_check_http_info *httpinf, const char *buf, cons
     *end = str;
     httpinf->proto = UC_PROTO_HTTPS;
     if (httpinf->port)
-        snprintf(httpinf->raw_url, MAX_URL_SIZE, "%s:%d", httpinf->url, httpinf->port);
+        snprintf(httpinf->raw_url, MAX_URL_SIZE, "%s:%d", httpinf->site, httpinf->port);
     else
-        strcpy(httpinf->raw_url, httpinf->url);
+        strcpy(httpinf->raw_url, httpinf->site);
+    /*url is the site, without port specification*/
+    httpinf->url = httpinf->site;
     return 1;
 }
 
@@ -410,25 +412,22 @@ int parse_url(struct url_check_http_info *httpinf, const char *buf, const char *
     char c;
     char *tmp;
     const char *str = buf;
-    size_t url_len, raw_url_len;
+    size_t site_len, raw_url_len;
     if ((tmp=strstr(str,"://"))) {	 
         httpinf->proto = get_protocol(str, tmp-str);
         raw_url_len = tmp-str + 3;
         if (raw_url_len > 10) /*This is does not look like a protocol*/
             return 0;
         strncpy(httpinf->raw_url, str, raw_url_len);
+        httpinf->url = httpinf->raw_url + raw_url_len;
         str = tmp+3;
-        url_len = 0;
+        site_len = 0;
         /*CI_MAXHOSTNAMELEN is significant smaller than the httpinf->[url|raw_url]*/
-        while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && url_len < CI_MAXHOSTNAMELEN){
-            httpinf->site[url_len] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
-            httpinf->url[url_len] = httpinf->site[url_len];
-            httpinf->raw_url[raw_url_len++] = httpinf->site[url_len];
-            url_len++;
+        while(*str != ':' && *str != '/'  && *str != ' ' && *str != '\0' && site_len < CI_MAXHOSTNAMELEN){
+            httpinf->raw_url[raw_url_len++] = httpinf->site[site_len++] = tolower(*str); /*Is it possible to give us hostname with uppercase letters?*/
             str++;
         }
-        httpinf->site[url_len] = '\0';
-        httpinf->url[url_len] = '\0';
+        httpinf->site[site_len] = '\0';
         httpinf->raw_url[raw_url_len] = '\0';
         if(*str==':'){
             httpinf->port = strtol(str+1,&tmp,10);
@@ -440,46 +439,42 @@ int parse_url(struct url_check_http_info *httpinf, const char *buf, const char *
             /*str = tmp;*/
         }
     } else {
-        strcpy(httpinf->url, httpinf->host);
         strcpy(httpinf->site, httpinf->host);
-        url_len = strlen(httpinf->url);
         raw_url_len = snprintf(httpinf->raw_url, MAX_URL_SIZE, "http://%s", httpinf->host);
         if (raw_url_len >= MAX_URL_SIZE) /*It is not possible but just in case...*/
             return 0;
+        httpinf->url = httpinf->raw_url + sizeof("http://");
         // httpinf->port = 80;
         httpinf->proto = UC_PROTO_HTTP;
         httpinf->transparent = 1;
     }
 
-    /*Check with raw_url_len<MAX_URL_LEN is enough url_len is smallen tahn raw_url_len*/
+    /*Check with raw_url_len<MAX_URL_LEN is enough url_len is equal to raw_url_len*/
     while (*str != ' ' && *str != '\0' && raw_url_len + 3 < MAX_URL_SIZE) {  /*copy page to the struct. */
         if (*str == '?' && ! httpinf->args) {
-            httpinf->raw_url[raw_url_len++] = *str;
-            httpinf->url[url_len++] = *str++;
-            httpinf->args = &(httpinf->url[url_len]);             
+            httpinf->raw_url[raw_url_len++] = *str++;
+            httpinf->args = httpinf->raw_url + raw_url_len;
         } else  if (*str == '%' && 
-                    isxdigit(*(str+1)) && 
-                    /* only printable ascii,  0x20 <= ascii  <= 0x7e :*/
-                    *(str+1) <= '7' && *(str+1) >= '2' &&
+                    isxdigit(*(str+1)) &&
                     isxdigit(*(str+2)) ) {
-             
             c  = 16 * ctox(*(str+1)) + ctox(*(str+2));
-            /*if it is not space, '+', '%' and it is not 7f=127*/
-            if (strchr(" +%?", c) == NULL && c < 127) {
-                httpinf->url[url_len++] = c;
-                strncpy(httpinf->raw_url+raw_url_len, str, 3);
-                raw_url_len +=3;
+            /*Do not convert unsafe chars */
+            if (c < 127 && c > 31 && strchr(" !*'();:@&=+$,/?#[]", c) == NULL) {
+                httpinf->raw_url[raw_url_len++] = c;
                 str += 3;
             }
-            else
-                httpinf->raw_url[raw_url_len++] = httpinf->url[url_len++] = *str++;
+            else {
+                httpinf->raw_url[raw_url_len++] = *str++;
+                if (CONVERT_PERCENT_CODES) {
+                    httpinf->raw_url[raw_url_len++] = (CONVERT_PERCENT_CODES == 1 ? tolower(*str++) : toupper(*str++));
+                    httpinf->raw_url[raw_url_len++] = (CONVERT_PERCENT_CODES == 1 ? tolower(*str++) : toupper(*str++));
+                }
+            }
         }
         else //TODO: maybe convert to %xx any non asciii char
-            httpinf->raw_url[raw_url_len++] = httpinf->url[url_len++] = *str++;
+            httpinf->raw_url[raw_url_len++] = *str++;
     }
 
-    httpinf->url[url_len] = '\0';
-    httpinf->url_size = url_len;
     httpinf->raw_url[raw_url_len] = '\0';
     httpinf->raw_url_size = raw_url_len;
     *end = str;
@@ -492,8 +487,8 @@ int get_http_info(ci_request_t * req, struct url_check_http_info *httpinf)
      char *tmp;
      ci_headers_list_t *req_header;
 
-     /*Initialize htto_info struct*/
-     httpinf->url[0]='\0';
+     /*Initialize http_info struct*/
+     httpinf->url = NULL;
      httpinf->args = NULL;
      httpinf->site[0] = '\0';
      httpinf->host[0] = '\0';
@@ -533,6 +528,8 @@ int get_http_info(ci_request_t * req, struct url_check_http_info *httpinf)
              return 0;
      }
      else if (!parse_url(httpinf, str, &str))
+         return 0;
+     if (!httpinf->url)
          return 0;
 
      if (*str != ' ') {         /*Where is the protocol info????? */
@@ -1256,6 +1253,21 @@ int cfg_profile_access(const char *directive, const char **argv, void *setdata)
      return 1;
 }
 
+int cfg_convert_percent(const char *directive, const char **argv, void *setdata)
+{
+    if(!argv[0])
+        return 0;
+    if (strcasecmp(argv[0], "lowercase"))
+        CONVERT_PERCENT_CODES = 1;
+    else if (strcasecmp(argv[0], "uppercase"))
+        CONVERT_PERCENT_CODES = 2;
+    else if (strcasecmp(argv[0], "none"))
+        CONVERT_PERCENT_CODES = 0;
+    else
+        return 0;
+
+    return 1;
+}
 /*****************************************************************/
 /* SguidGuard Databases                                          */
 
@@ -1280,7 +1292,7 @@ int sg_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, s
     return 1;
   }
   ci_debug_printf(5, "srv_url_check: sg_db: checking url %s \n", http_info->url);
-  if (sg_url_exists(sg_db,http_info->url)) {
+  if (http_info->url && sg_url_exists(sg_db,http_info->url)) {
       match_info_append_db(match_info, sg_db->urls_db_name, NULL);
     match_info->match_length = strlen(http_info->url);
     return 1;
@@ -1468,6 +1480,12 @@ int lt_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, s
   char *s, *snext, *e, *end, store;
   int len, full_url =0;
   struct ci_lookup_table *lt_db = (struct ci_lookup_table *)ldb->db_data;
+
+  if (!http_info->url) { /*Is not possible*/
+      ci_debug_printf(1, "lt_lookup_db: Null url passed. (Bug?)");
+      return 0;
+  }
+
   switch(ldb->check) {
   case CHECK_HOST:
       ret = ci_lookup_table_search(lt_db, http_info->site, &vals);

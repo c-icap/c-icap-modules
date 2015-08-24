@@ -48,11 +48,10 @@ struct url_check_http_info {
     char host[CI_MAXHOSTNAMELEN + 1];
     char server_ip[64];                   /*I think ipv6 address needs about 32 bytes*/
     char site[CI_MAXHOSTNAMELEN + 1];
-    char url[MAX_URL_SIZE];              /* I think it is enough */
-    size_t url_size;
-    char raw_url[MAX_URL_SIZE];
+    char raw_url[MAX_URL_SIZE]; /*The url*/
     size_t raw_url_size;
-    char *args;
+    char *url; /*pointer to the part of the url after the protocol specification (after "://")*/
+    char *args; /*pointer to the arguments part of the urls (after the '?') */
 };
 
 #define SRV_UC_ACT_ERROR      0xFFFFFFFF
