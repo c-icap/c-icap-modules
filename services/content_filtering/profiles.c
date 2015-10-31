@@ -283,7 +283,7 @@ int srv_cf_cfg_profile_option(const char *directive, const char **argv, void *se
 
     if (strcasecmp(argv[1], "AnyContentType") == 0)
         prof->anyContentType = 1;
-    if (strcasecmp(argv[1], "MaxBodyData") == 0) {
+    else if (strcasecmp(argv[1], "MaxBodyData") == 0) {
         if (!argv[2]) {
             ci_debug_printf(1, "srv_url_check: Error: missing value for 'MaxBodyData' option!");
             return 0;
