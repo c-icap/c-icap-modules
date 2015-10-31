@@ -31,6 +31,8 @@ int replacePartsToBody(ci_membuf_t *body, ci_membuf_t *newbody, ci_list_t *repla
 
 void srv_cf_filters_reset()
 {
+    if (!FILTERS)
+        return;
     ci_ptr_dyn_array_destroy(FILTERS);
     FILTERS = NULL;
 }
@@ -921,7 +923,7 @@ int srv_cf_action_parse(const char *str)
 
 const srv_cf_user_filter_t *srv_cf_action_score_parse(const char *str, int *scoreOperator, int *score)
 {
-    const srv_cf_user_filter_t *fd;
+    const srv_cf_user_filter_t *fd = NULL;
     char *scoreParam = strdup(str);
     char *scoreArg = NULL;
     char *e;
@@ -949,7 +951,7 @@ const srv_cf_user_filter_t *srv_cf_action_score_parse(const char *str, int *scor
     } else {
         *scoreOperator = CF_OP_GREATER;
     }
-    if (!(fd = ci_ptr_dyn_array_search(FILTERS, scoreArg))) {
+    if (FILTERS && !(fd = ci_ptr_dyn_array_search(FILTERS, scoreArg))) {
         ci_debug_printf(1, "Filter definition for '%s' not found\n", scoreArg);
     }
     /* End of parsing, free temporary buffer*/

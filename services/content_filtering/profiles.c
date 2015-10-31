@@ -15,6 +15,8 @@ srv_cf_profile_t DEFAULT_PROFILE = { .name = "default", .access_list =  NULL, .a
 
 const srv_cf_profile_t *srv_srv_cf_profile_search(const char *name)
 {
+    if (!PROFILES)
+        return NULL;
     return (const srv_cf_profile_t *)ci_ptr_dyn_array_search(PROFILES, name);
 }
 
@@ -72,10 +74,12 @@ const srv_cf_profile_t *srv_srv_cf_profile_select(ci_request_t *req)
     struct checkProfileData checkData;
     checkData.req = req;
     checkData.prof = NULL;
-    ci_ptr_dyn_array_iterate(PROFILES, &checkData, check_profile);
-    if (checkData.prof) {
-        ci_debug_printf(5, "url_check: profile %s matches!\n", checkData.prof->name);
-        return checkData.prof;
+    if (PROFILES) {
+        ci_ptr_dyn_array_iterate(PROFILES, &checkData, check_profile);
+        if (checkData.prof) {
+            ci_debug_printf(5, "url_check: profile %s matches!\n", checkData.prof->name);
+            return checkData.prof;
+        }
     }
 
     ci_debug_printf(5, "url_check: Default profile selected!\n");
@@ -234,7 +238,7 @@ int srv_cf_cfg_profile_access(const char *directive, const char **argv, void *se
    if(!argv[0] || !argv[1])
     return 0;
 
-   if (!(prof = (srv_cf_profile_t *)ci_ptr_dyn_array_search(PROFILES, argv[0]))) {
+   if (!PROFILES || !(prof = (srv_cf_profile_t *)ci_ptr_dyn_array_search(PROFILES, argv[0]))) {
        ci_debug_printf(1, "srv_url_check: Error: Unknown profile %s!", argv[0]);
        return 0;
    }
@@ -272,7 +276,7 @@ int srv_cf_cfg_profile_option(const char *directive, const char **argv, void *se
     if(!argv[0] || !argv[1])
         return 0;
 
-    if (!(prof = (srv_cf_profile_t *)ci_ptr_dyn_array_search(PROFILES, argv[0]))) {
+    if (!PROFILES || !(prof = (srv_cf_profile_t *)ci_ptr_dyn_array_search(PROFILES, argv[0]))) {
         ci_debug_printf(1, "srv_url_check: Error: Unknown profile %s!", argv[0]);
         return 0;
     }
