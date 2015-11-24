@@ -298,6 +298,7 @@ void *virus_scan_init_request_data(ci_request_t * req)
           }
           memset(&data->body,0, sizeof(struct av_body_data));
           data->error_page = NULL;
+          data->url_log[0] = '\0';
           data->virus_info.virus_name[0] = '\0';
           data->virus_info.virus_found = 0;
           data->virus_info.disinfected = 0;
@@ -418,7 +419,9 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
      data->expected_size = content_size;
 
      /*log objects url*/
-     ci_http_request_url(req, data->url_log, LOG_URL_SIZE);
+     if (!ci_http_request_url(req, data->url_log, LOG_URL_SIZE)) {
+         ci_debug_printf(2, "Failed to retrieve HTTP request URL\n");
+     }
 
      if (preview_data_len == 0) {
          data->must_scanned = NO_DECISION;
