@@ -1788,12 +1788,16 @@ unsigned int action_basic_action(ci_request_t *req, const struct url_check_actio
     ci_debug_printf(5, "srv_url_check: Going to check the db %s for %s request\n", db->name, BASIC_ACTION_STR(adb->pass));
 
     if (db->lookup_db(db, info, match_info, adb->subcats)) {
-	ci_debug_printf(5, "srv_url_check: The db :%s matches! \n", db->name);
-        status |= apply_actions(req, adb->pass);
-        if(adb->pass != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
+	ci_debug_printf(5, "srv_url_check: The db '%s' %s! \n", db->name, BASIC_ACTION_STR(adb->pass));
+        if(adb->pass != DB_MATCH) {
+            /*Final action*/
+            ci_debug_printf(5, "srv_url_check: Build info for db :%s/%s\n", db->name, db->descr);
             strncpy(match_info->action_db, db->name, _DB_NAME_SIZE);
             match_info->action_db[_DB_NAME_SIZE - 1] = '\0';
             match_info->action_db_descr = db->descr;
+        }
+        status |= apply_actions(req, adb->pass);
+        if(adb->pass != DB_MATCH) {/*if it is DB_MATCH just continue checking*/
             return (status | SRV_UC_ACT_ABORT); /*abort here*/
         }
     }
