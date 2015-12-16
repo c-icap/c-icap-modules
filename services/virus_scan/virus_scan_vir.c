@@ -197,7 +197,7 @@ char *virus_scan_compute_name(ci_request_t * req)
      int namelen;
 
      content_disposition = ci_http_response_get_header(req, "Content-Disposition");
-     if (content_disposition && (filename = strcasestr(content_disposition, "filename="))) {
+     if (content_disposition && (filename = ci_strcasestr(content_disposition, "filename="))) {
           filename = filename + 9;
           if ((str = strrchr(filename, '/'))) {
                filename = str + 1;
