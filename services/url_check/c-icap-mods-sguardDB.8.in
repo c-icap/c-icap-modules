@@ -41,7 +41,7 @@ Search in the database for a url or domain matches the given url
 Select the sub-database (urls or domains) to operate. 
 .SH EXAMPLES
 .TP
-c-icap-mods-sguardDB -C -db /url/local/blacklists-toulouse/porn/
+c-icap-mods-sguardDB \-C \-db /url/local/blacklists-toulouse/porn/
 It builds the 
 .B domains.db
 and
@@ -52,7 +52,7 @@ and
 .B domains
 files exist under the same directory.
 .TP
-c-icap-mods-sguardDB -u -db /url/local/blacklists-toulouse/porn/
+c-icap-mods-sguardDB \-u \-db /url/local/blacklists-toulouse/porn/
 updates the 
 SquidGuard databases under the /url/local/blacklists-toulouse/porn directory using the 
 .B urls.diff
