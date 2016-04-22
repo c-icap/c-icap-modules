@@ -133,7 +133,7 @@ int srv_cf_cfg_profile(const char *directive, const char **argv, void *setdata)
 
     if (action == CF_AC_ADD_HEADER) { 
         if (!argv[3]) {
-            ci_debug_printf(1, "Missing header definition for add_header action!\n")
+            ci_debug_printf(1, "Missing header definition for add_header action!\n");
             return 0;
         }
         header = argv[3];
@@ -213,7 +213,7 @@ int srv_cf_cfg_profile(const char *directive, const char **argv, void *setdata)
 
 int srv_cf_cfg_action(const char *directive,const char **argv,void *setdata)
 {
-    const char *newArgv[4];
+    const char *newArgv[5];
     if (!argv[0] || ! argv[1]) {
         ci_debug_printf(1, "Missing action (block|allow|addHeader)\n");
         return 0;
@@ -222,7 +222,8 @@ int srv_cf_cfg_action(const char *directive,const char **argv,void *setdata)
     newArgv[0] = "default";
     newArgv[1] = argv[0];
     newArgv[2] = argv[1];
-    newArgv[3] = NULL;
+    newArgv[3] = argv[2] ? argv[2] : NULL;
+    newArgv[4] = NULL;
 
     return srv_cf_cfg_profile(directive, newArgv, setdata);
 }
