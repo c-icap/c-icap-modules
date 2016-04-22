@@ -413,8 +413,10 @@ int srv_cf_body_to_ring(srv_cf_body_t *body)
         body->ring->write_pos = body->body->buf + body->body->endpos;
 
     /*If we have not read anything on membuf, then it is full*/
-    if (body->ring->write_pos == body->ring->read_pos)
+    if (body->ring->write_pos == body->ring->read_pos && body->body->endpos)
         body->ring->full = 1;
+    else
+        body->ring->full = 0;
 
     return 1;
 }
