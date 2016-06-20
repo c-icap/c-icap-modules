@@ -357,6 +357,7 @@ int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 {
     char resp[1024], *s, *f, *v, *filename;
     int sockfd, ret, status;
+    av_virus_t a_virus;
     int fd = body->fd;
 
     vinfo->virus_name[0] = '\0';
@@ -408,6 +409,13 @@ int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
             *v = *s;
         /*There is a space before "FOUND" and maybe v points after the end of string*/
         *(v - 1) = '\0';
+
+        vinfo->viruses = ci_vector_create(512);
+        strcpy(a_virus.virus, vinfo->virus_name); // Both of ize AV_NAME_SIZE
+        a_virus.type[0]= '\0';
+        a_virus.problemID = 0;
+        a_virus.action = AV_NONE;
+        ci_vector_add(vinfo->viruses, &a_virus, sizeof(av_virus_t));
     } else if (strncmp(s, "OK", 2) != 0) {
         ci_debug_printf(1, "clamd_scan: Error scanning file. Response string: %s", resp);
         status = 0;
