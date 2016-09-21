@@ -693,14 +693,19 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
         if (data->engine[0]) {
             for (i=0; data->engine[i] != NULL && !data->virus_info.virus_found; i++) {
                 ci_debug_printf(4, "Use '%s' engine to scan data\n", data->engine[i]->name);
-                if (data->body.decoded) {
+                if (data->body.decoded)
                     scan_status = data->engine[i]->scan_simple_file(data->body.decoded, &data->virus_info);
-                    if (data->virus_info.disinfected) /*we can not disinfect encoded files yet...*/
-                        data->virus_info.disinfected = 0;
-                } else if (data->body.type == AV_BT_FILE)
+                else if (data->body.type == AV_BT_FILE)
                     scan_status = data->engine[i]->scan_simple_file(data->body.store.file, &data->virus_info);
                 else // if (data->body.type == AV_BT_MEM)
                     scan_status = data->engine[i]->scan_membuf(data->body.store.mem, &data->virus_info);
+
+                /* we can not disinfect encoded files yet 
+                   nor files which partialy sent back to client*/
+                if (data->virus_info.disinfected && (data->body.decoded || ci_req_sent_data(req)))
+                    data->virus_info.disinfected = 0;
+
+
                 if (!scan_status) {
                     ci_debug_printf(1, "Failed to scan web object\n");
                     if (PASSONERROR)
