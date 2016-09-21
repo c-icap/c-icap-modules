@@ -476,6 +476,7 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
     const char *virname;
     int ret, status;
     unsigned long scanned_data;
+    av_virus_t a_virus;
     int fd = body->fd;
 
     vinfo->virus_name[0] = '\0';
@@ -498,6 +499,12 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
          vinfo->virus_name[AV_NAME_SIZE - 1] = '\0';
          vinfo->virus_found = 1;
          ci_debug_printf(3, "clamav_mod: Virus '%s' detected\n", vinfo->virus_name);
+         vinfo->viruses = ci_vector_create(512);
+         strcpy(a_virus.virus, vinfo->virus_name); // Both of ize AV_NAME_SIZE
+         a_virus.type[0]= '\0';
+         a_virus.problemID = 0;
+         a_virus.action = AV_NONE;
+         ci_vector_add(vinfo->viruses, &a_virus, sizeof(av_virus_t));
      }
      else if (ret != CL_CLEAN) {
          ci_debug_printf(1,
