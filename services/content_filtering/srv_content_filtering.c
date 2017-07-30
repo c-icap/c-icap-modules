@@ -64,6 +64,7 @@ struct srv_content_filtering_req_data {
     int eof;
     int isText;
     int abort;
+    int isReqmod;
     srv_cf_results_t result;
 };
 
@@ -106,7 +107,7 @@ static struct ci_conf_entry srv_content_filtering_conf_variables[] = {
 CI_DECLARE_MOD_DATA ci_service_module_t service = {
     "srv_content_filtering",                         /* mod_name, The module name */
     "srv_content_filtering service",            /* mod_short_descr,  Module short description */
-    ICAP_RESPMOD,     /* mod_type, The service type is responce or request modification */
+    ICAP_RESPMOD|ICAP_REQMOD,     /* mod_type, The service type is responce or request modification */
     srv_content_filtering_init_service,              /* mod_init_service. Service initialization */
     srv_content_filtering_post_init_service,         /* post_init_service. Service initialization after c-icap 
 					configured. Not used here */
@@ -175,6 +176,7 @@ void *srv_content_filtering_init_request_data(ci_request_t * req)
     srv_content_filtering_data->enMethod = emNone;
     srv_content_filtering_data->isText = 0;
     srv_content_filtering_data->abort = 0;
+    srv_content_filtering_data->isReqmod = 0;
     srv_content_filtering_data->maxBodyData = 0;
     srv_content_filtering_data->expectedData = 0;
     srv_content_filtering_data->result.action = NULL;
@@ -286,6 +288,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
          srv_content_filtering_data->eof = ci_req_hasalldata(req);
      }
 
+     srv_content_filtering_data->isReqmod = (req->type == ICAP_REQMOD ? 1 : 0);
      return CI_MOD_CONTINUE;
 }
 
@@ -325,9 +328,14 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 
     if (result->replaceBody && !ci_req_sent_data(req)) {
         srv_cf_body_replace_body(&srv_content_filtering_data->body, result->replaceBody);
-        ci_http_response_remove_header(req, "Content-Length");
         snprintf(tmpBuf, sizeof(tmpBuf), "Content-Length: %lld", (long long int)ci_membuf_size(result->replaceBody));
-        ci_http_response_add_header(req, tmpBuf);
+        if (srv_content_filtering_data->isReqmod) {
+            ci_http_request_remove_header(req, "Content-Length");
+            ci_http_request_add_header(req, tmpBuf);
+        } else {
+            ci_http_response_remove_header(req, "Content-Length");
+            ci_http_response_add_header(req, tmpBuf);
+        }
         result->replaceBody = NULL; /*Now srv_content_filtering_data->body points to this. 
                                      set it to NULL to avoid release twice later...*/
     }
