@@ -4,6 +4,7 @@
 #include "common-static.h"
 #endif
 #include "c_icap/debug.h"
+#include "c_icap/body.h"
 #include "filters.h"
 #include <errno.h>
 

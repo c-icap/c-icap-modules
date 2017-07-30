@@ -8,6 +8,7 @@
 #include "c_icap/array.h"
 #include "c_icap/debug.h"
 #include "c_icap/simple_api.h"
+#include "c_icap/body.h"
 #include "filters.h"
 
 #include <assert.h>
