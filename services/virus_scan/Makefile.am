@@ -7,12 +7,12 @@ cicapmodule_LTLIBRARIES=virus_scan.la clamd_mod.la
 
 CONFS = virus_scan.conf clamd_mod.conf
 
-virus_scan_la_LIBADD = @MODULES_LIBADD@ @ZLIB_ADD_LDADD@
+virus_scan_la_LIBADD = @MODULES_LIBADD@ 
 virus_scan_la_LDFLAGS =  -module -avoid-version
-virus_scan_la_CFLAGS = -I../../include/ @ZLIB_ADD_FLAG@
-virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c av_body.c decode.c
+virus_scan_la_CFLAGS = -I../../include/ 
+virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c av_body.c 
 
-clamd_mod_la_LIBADD = @MODULES_LIBADD@ 
+clamd_mod_la_LIBADD = @MODULES_LIBADD@
 clamd_mod_la_LDFLAGS =  -module -avoid-version
 clamd_mod_la_CFLAGS = -I../../include/
 clamd_mod_la_SOURCES = clamd_mod.c

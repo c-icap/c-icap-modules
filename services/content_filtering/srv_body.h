@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2012 Christos Tsantilas  
+ *  Copyright (C) 2012 Christos Tsantilas
  *  email: christos@chtsanti.net
  *
  *  This program is free software; you can redistribute it and/or modify

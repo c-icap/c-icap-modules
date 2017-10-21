@@ -127,7 +127,7 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
              data->error_page = NULL;
          }
      }
-     
+
      if (data->vir_mode_state == VIR_TAIL) {
          data->vir_mode_state = VIR_END;
 	 ci_debug_printf(6, "viralator:EOF received, and vir mode HTML page sent....\n");
@@ -137,7 +137,7 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
        ci_debug_printf(6, "vir mode HTML HEAD data sent ....\n");
        data->vir_mode_state = VIR_MAIN;
      }
-     
+
      /*HERE we should always are in VIR_MAIN state */
 
      if ((((av_req_data_t *) data)->last_update + VIR_UPDATE_TIME) > time(NULL)) {
@@ -150,7 +150,7 @@ int send_vir_mode_page(av_req_data_t * data, char *buf, int len,
                      " of data<br>",
                      (CAST_OFF_T) av_body_data_size(&(((av_req_data_t *) data)->body)),
                      (CAST_OFF_T) ((av_req_data_t *) data)->expected_size);
-     
+
      error_page = ci_txt_template_build_content(req, "virus_scan", "VIR_MODE_PROGRESS",
 						virus_scan_format_table);
      if (!error_page) {
@@ -173,7 +173,7 @@ void endof_data_vir_mode(av_req_data_t * data, ci_request_t * req)
          return;
      assert(data->body.type == AV_BT_FILE);
      if (data->virus_info.virus_found && !data->virus_info.disinfected) {
-	  error_page = ci_txt_template_build_content(req, "virus_scan", 
+	  error_page = ci_txt_template_build_content(req, "virus_scan",
 						     "VIR_MODE_VIRUS_FOUND",
 						     virus_scan_format_table);
 	  data->error_page = error_page;
@@ -309,7 +309,7 @@ int fmt_virus_scan_filename(ci_request_t *req, char *buf, int len, const char *p
     if (data->body.type == AV_BT_NONE)
          return 0;
     assert(data->body.type == AV_BT_FILE);
-    
+
     if (! data->body.store.file->filename)
         return 0;
 
@@ -326,7 +326,7 @@ int fmt_virus_scan_filename_requested(ci_request_t *req, char *buf, int len, con
 
     if (! data->requested_filename)
         return 0;
-    
+
     return snprintf(buf, len, "%s", data->requested_filename);
 }
 

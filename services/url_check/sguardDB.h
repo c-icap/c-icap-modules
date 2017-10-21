@@ -7,7 +7,7 @@ typedef struct sg_db{
   DB *urls_db;
   char *db_home;
   char *domains_db_name;
-  char *urls_db_name;   
+  char *urls_db_name;
 } sg_db_t;
 
 

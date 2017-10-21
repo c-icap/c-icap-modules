@@ -5,13 +5,13 @@ c-icap-mods-sguardDB - simple utility to create Berkeley DB lookup tables
 .B c-icap-mods-sguardDB
 [
 .B \-d debug_level
-] 
+]
 [
 .B \-db path
-] 
+]
 [
 .B \-C
-] 
+]
 [
 .B \-u
 ]
@@ -20,7 +20,7 @@ c-icap-mods-sguardDB - simple utility to create Berkeley DB lookup tables
 ]
 [
 .B \-f urls|domains
-] 
+]
 [
 .B \-\-dump
 ]
@@ -38,25 +38,25 @@ Update mode. Update the database using the "domains.diff" and "urls.diff" files 
 .IP "-s url"
 Search in the database for a url or domain matches the given url
 .IP "-f urls|domains"
-Select the sub-database (urls or domains) to operate. 
+Select the sub-database (urls or domains) to operate.
 .SH EXAMPLES
 .TP
 c-icap-mods-sguardDB \-C \-db /url/local/blacklists-toulouse/porn/
-It builds the 
+It builds the
 .B domains.db
 and
 .B urls.db
-SquidGuard databases under the /url/local/blacklists-toulouse/porn directory using the 
-.B urls 
-and 
+SquidGuard databases under the /url/local/blacklists-toulouse/porn directory using the
+.B urls
+and
 .B domains
 files exist under the same directory.
 .TP
 c-icap-mods-sguardDB \-u \-db /url/local/blacklists-toulouse/porn/
-updates the 
-SquidGuard databases under the /url/local/blacklists-toulouse/porn directory using the 
+updates the
+SquidGuard databases under the /url/local/blacklists-toulouse/porn directory using the
 .B urls.diff
-and 
+and
 .B domains.diff
 files exist under the same directory.
 .SH SEE ALSO

@@ -392,7 +392,7 @@ int cmp_replacement_func(const void *obj, const void *user_data, size_t user_dat
             ci_debug_printf(5,"no header one of them\n");
             return -1;
         }
-        /*if one of two objects have header definition and header names are not the same then 
+        /*if one of two objects have header definition and header names are not the same then
           they are not equal*/
         if (list_filter_data->header && cmp_filter_data->header && strcmp(list_filter_data->header, cmp_filter_data->header) !=0) {
             ci_debug_printf(5,"different headers\n");
@@ -454,11 +454,11 @@ int cmp_replace_part_t_func(const void *obj1, const void *obj2, size_t user_data
     /*if one of two objects does not have header definition are not equal*/
     if (!repl1_filter_data->header && repl2_filter_data->header)
         return -1;
- 
+
     if (repl1_filter_data->header && !repl2_filter_data->header)
         return 1;
 
-    /*if one of two objects have header definition and header names are not the same then 
+    /*if one of two objects have header definition and header names are not the same then
       they are not equal*/
     if ((ret = strcmp(repl1_filter_data->header, repl2_filter_data->header)) != 0)
         return ret;
@@ -526,7 +526,7 @@ int srv_cf_apply_actions(ci_request_t *req, const srv_cf_profile_t *profile, ci_
         for (actionEntry = ci_list_first(profile->actions); actionEntry != NULL && doAction == NULL; actionEntry = ci_list_next(profile->actions)) {
             fr = findFilterResult(fad.filterResults, actionEntry->matchingFilter);
 
-            if (fr && 
+            if (fr &&
                 ((actionEntry->scoreOperator == CF_OP_LESS && fr->score < actionEntry->score) ||
                  (actionEntry->scoreOperator == CF_OP_GREATER && fr->score > actionEntry->score) ||
                  (actionEntry->scoreOperator == CF_OP_EQUAL && fr->score == actionEntry->score))
@@ -600,7 +600,7 @@ int replacePartsToBody(ci_membuf_t *body, ci_membuf_t *newbody, ci_list_t *repla
 
     if (!replaceInfoTags)
         return 0;
-    
+
     ci_debug_printf(5, "Initial list:\n");
     for (rpart = ci_list_first(replacements); rpart != NULL; rpart = ci_list_next(replacements)) {
         filter_data = (const srv_cf_user_filter_data_t *)rpart->user_data;
@@ -633,8 +633,8 @@ int replacePartsToBody(ci_membuf_t *body, ci_membuf_t *newbody, ci_list_t *repla
         for (i = 0; i < strlen(replaceWithStr); ++i) {
             if (replaceWithStr[i] == '$' && (i == 0 || replaceWithStr[i-1] != '\\')
                 && replaceWithStr[i +1] >= '0' && replaceWithStr[i +1] <= '9') {
-                ci_membuf_write(newbody, 
-                                data + rpart->matches[replaceWithStr[i + 1] - '0' ].s, 
+                ci_membuf_write(newbody,
+                                data + rpart->matches[replaceWithStr[i + 1] - '0' ].s,
                                 rpart->matches[replaceWithStr[i + 1] - '0' ].e - rpart->matches[replaceWithStr[i + 1] - '0' ].s,
                                 0);
                 ++i;
@@ -645,7 +645,7 @@ int replacePartsToBody(ci_membuf_t *body, ci_membuf_t *newbody, ci_list_t *repla
     }
     if (s && (body->endpos - (s - data)) > 0)
         ci_membuf_write(newbody, s, body->endpos - (s - data), 0);
-        
+
     ci_membuf_write(newbody, "", 0, 1);
     return 1;
 }
@@ -691,7 +691,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
         return 0;
     }
 
-    while(fgets(line, sizeof(line) - 1, f)) { 
+    while(fgets(line, sizeof(line) - 1, f)) {
         lineNumber++;
         line[sizeof(line) - 1] = '\0';
         e = line + strlen(line);
@@ -724,7 +724,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
             if (strncmp(s, "score=", 6) == 0) {
                 s += 6;
                 fd->score = strtol(s, &e, 10);
-                if (s == e) { 
+                if (s == e) {
                     ci_debug_printf(1, "Error parsing file: %s, line %d: '%s'\n", file, lineNumber, s);
                     return 0;
                 }
@@ -783,7 +783,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
     const char *rulesFromFile = NULL;
 
     for (argc = 0; argv[argc] != NULL; ++argc);
-    
+
     if (argc < 3) {
         ci_debug_printf(1, "Missing arguments for '%s' cfg parameter!\n", directive);
         return 0;
@@ -798,7 +798,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
         *typeArg = '\0';
         typeArg++;
         e = strchr(typeArg, '}');
-        if (e) 
+        if (e)
             *e = '\0';
     }
     ci_debug_printf(4, "Type parameter: %s arg:%s\n", typeParam, typeArg);
@@ -880,7 +880,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
             }
         }
     }
-    
+
     if (!FILTERS)
         FILTERS = ci_ptr_dyn_array_new(4096);
 

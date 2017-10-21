@@ -78,7 +78,7 @@ void *http_header_cfg(const char **argv)
 
      struct http_header_data *data = malloc(sizeof(struct http_header_data));
      data->head = strdup(argv[1]);
-     data->value = strdup(argv[2]);  
+     data->value = strdup(argv[2]);
      return data;
 }
 
@@ -145,7 +145,7 @@ int http_header_replace_cb(const struct cfg_request_filter *flt, ci_request_t *r
           heads = ci_http_request_headers(req);
      if (!heads)
           return 0;
-          
+
      bytes = snprintf(buf, sizeof(buf), "%s :", data->head);
      if (bytes >= sizeof(buf))
           return 0;

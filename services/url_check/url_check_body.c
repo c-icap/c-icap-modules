@@ -77,7 +77,7 @@ int body_data_write(struct body_data *body, char *buf, int len, int iseof)
     if (body->type == CACHED){
         if (buf && len)
             return ci_cached_file_write(body->store.cached, buf, len, iseof);
-        else if (iseof) 
+        else if (iseof)
             return  ci_cached_file_write(body->store.cached, NULL, 0, iseof);
         /*else ERROR*/
     }
@@ -103,7 +103,7 @@ int body_data_write(struct body_data *body, char *buf, int len, int iseof)
         ci_debug_printf(1, "BUG in url_check, body_data_write: invalid body type:%d\n", body->type);
         return CI_ERROR;
     }
-    
+
     return CI_ERROR;
 }
 

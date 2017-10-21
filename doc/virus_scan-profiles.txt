@@ -19,7 +19,7 @@ and use configuration profiles in virus_scan service:
 c-icap.conf configuration
 =========================
 
-The configuration parameters to configure and use profiles for virus_scan 
+The configuration parameters to configure and use profiles for virus_scan
 service are the followings:
 
 TAG: virus_scan.Profile
@@ -52,8 +52,8 @@ Description:
 Example configuration
 =====================
 
-Scenario: 
- 1) We do not want to scan objects comming from microsoft 
+Scenario:
+ 1) We do not want to scan objects comming from microsoft
  2) We do not want to use virelator mode for objects smaller than 5Mb
 
 Here is a sample configuration file

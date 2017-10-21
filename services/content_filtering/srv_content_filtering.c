@@ -109,7 +109,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
     "srv_content_filtering service",            /* mod_short_descr,  Module short description */
     ICAP_RESPMOD|ICAP_REQMOD,     /* mod_type, The service type is responce or request modification */
     srv_content_filtering_init_service,              /* mod_init_service. Service initialization */
-    srv_content_filtering_post_init_service,         /* post_init_service. Service initialization after c-icap 
+    srv_content_filtering_post_init_service,         /* post_init_service. Service initialization after c-icap
 					configured. Not used here */
     srv_content_filtering_close_service,           /* mod_close_service. Called when service shutdowns. */
     srv_content_filtering_init_request_data,         /* mod_init_request_data */
@@ -127,7 +127,7 @@ int srv_content_filtering_init_service(ci_service_xdata_t * srv_xdata,
                       struct ci_server_conf *server_conf)
 {
      ci_debug_printf(5, "Initialization of srv_content_filtering module......\n");
-     
+
      /*Tell to the icap clients that we can support up to 1024 size of preview data*/
      ci_service_set_preview(srv_xdata, 1024);
 
@@ -146,14 +146,14 @@ int srv_content_filtering_post_init_service(ci_service_xdata_t * srv_xdata,
 }
 
 /* This function will be called when the service shutdown */
-void srv_content_filtering_close_service() 
+void srv_content_filtering_close_service()
 {
     srv_cf_filters_reset();
     srv_srv_cf_profiles_reset();
     ci_debug_printf(5,"Service shutdown!\n");
 }
 
-/*This function will be executed when a new request for srv_content_filtering service 
+/*This function will be executed when a new request for srv_content_filtering service
   arrives. This function will initialize the required structures and data
   to serve the request.
  */
@@ -168,7 +168,7 @@ void *srv_content_filtering_init_request_data(ci_request_t * req)
         return NULL;
     }
 
-    /*If the ICAP request encuspulates a HTTP objects which contains body data 
+    /*If the ICAP request encuspulates a HTTP objects which contains body data
       and not only headers allocate a ci_cached_file_t object to store the body data.
     */
     srv_cf_body_init(&srv_content_filtering_data->body);
@@ -194,7 +194,7 @@ void srv_content_filtering_release_request_data(void *data)
 {
     /*The data points to the srv_content_filtering_req_data struct we allocated in function srv_content_filtering_init_service */
     struct srv_content_filtering_req_data *srv_content_filtering_data = (struct srv_content_filtering_req_data *)data;
-    
+
     /*if we had body data, release the related allocated data*/
     srv_cf_body_free(&srv_content_filtering_data->body);
 
@@ -243,7 +243,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
          return CI_MOD_ALLOW204;
      }
 
-     /*If there are is a Content-Length header, check it we do not want to 
+     /*If there are is a Content-Length header, check it we do not want to
       process body data with more than MaxBodyData size*/
      content_len = ci_http_content_length(req);
      ci_debug_printf(4, "Srv_Content_Filtering expected length: %"PRINTF_OFF_T"\n", (CAST_OFF_T) content_len);
@@ -261,7 +261,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      }
 
      if (srv_content_filtering_data->isText) {
-         
+
      }
 
      ci_debug_printf(8, "Srv_Content_Filtering service will process the request\n");
@@ -292,9 +292,9 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      return CI_MOD_CONTINUE;
 }
 
-/* This function will called if we returned CI_MOD_CONTINUE in  
-   srv_content_filtering_check_preview_handler function, after we read all the data from 
-   the ICAP client 
+/* This function will called if we returned CI_MOD_CONTINUE in
+   srv_content_filtering_check_preview_handler function, after we read all the data from
+   the ICAP client
 */
 int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 {
@@ -305,7 +305,7 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 
     if (srv_content_filtering_data->abort) {
         /*We had already start sending data....*/
-        srv_content_filtering_data->eof = 1;        
+        srv_content_filtering_data->eof = 1;
         return CI_MOD_DONE;
     }
 
@@ -336,7 +336,7 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
             ci_http_response_remove_header(req, "Content-Length");
             ci_http_response_add_header(req, tmpBuf);
         }
-        result->replaceBody = NULL; /*Now srv_content_filtering_data->body points to this. 
+        result->replaceBody = NULL; /*Now srv_content_filtering_data->body points to this.
                                      set it to NULL to avoid release twice later...*/
     }
 
@@ -369,7 +369,7 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 }
 
 /* This function will called if we returned CI_MOD_CONTINUE in  srv_content_filtering_check_preview_handler
-   function, when new data arrived from the ICAP client and when the ICAP client is 
+   function, when new data arrived from the ICAP client and when the ICAP client is
    ready to get data.
 */
 int srv_content_filtering_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
@@ -381,7 +381,7 @@ int srv_content_filtering_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int i
 
      /*write the data read from icap_client to the srv_content_filtering_data->body*/
      if(rlen && rbuf) {
-         if (srv_content_filtering_data->body.ring == NULL && 
+         if (srv_content_filtering_data->body.ring == NULL &&
              (srv_content_filtering_data->body.size + *rlen) > srv_content_filtering_data->maxBodyData) {
              ci_debug_printf(4, "Srv_Content_Filtering content-length:%" PRIu64 " bigger than maxBodyData:%" PRId64 "\n",
                              (srv_content_filtering_data->body.size + *rlen),
@@ -476,7 +476,7 @@ void add_xheaders(struct srv_content_filtering_req_data * data, ci_request_t * r
         ci_request_set_str_attribute(req, "srv_content_filtering:action_filter_score", buf);
 
         snprintf(buf, sizeof(buf), "X-Response-Desc: %s score=%d%c%d",
-                 data->result.action->matchingFilter->name, 
+                 data->result.action->matchingFilter->name,
                  data->result.action_score,
                  (data->result.action->scoreOperator == CF_OP_LESS ?  '<' :
                   (data->result.action->scoreOperator == CF_OP_GREATER ?  '>' : '=')),
@@ -488,7 +488,7 @@ void add_xheaders(struct srv_content_filtering_req_data * data, ci_request_t * r
 
 int fmt_srv_cf_action(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data && srv_cf_data->result.action)
         return snprintf(buf, len, "%s", srv_cf_action_str(srv_cf_data->result.action->action));
@@ -498,7 +498,7 @@ int fmt_srv_cf_action(ci_request_t *req, char *buf, int len, const char *param)
 
 int fmt_srv_cf_action_score(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data  && srv_cf_data->result.action)
         return snprintf(buf, len, "%d", srv_cf_data->result.action_score);
@@ -508,10 +508,10 @@ int fmt_srv_cf_action_score(ci_request_t *req, char *buf, int len, const char *p
 
 int fmt_srv_cf_action_reason(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data  && srv_cf_data->result.action)
-        return snprintf(buf, len, "%c%d", 
+        return snprintf(buf, len, "%c%d",
                         (srv_cf_data->result.action->scoreOperator == CF_OP_LESS ?  '<' :
                          (srv_cf_data->result.action->scoreOperator == CF_OP_GREATER ?  '>' : '=')),
                         srv_cf_data->result.action->score);
@@ -521,7 +521,7 @@ int fmt_srv_cf_action_reason(ci_request_t *req, char *buf, int len, const char *
 
 int fmt_srv_cf_scores_list(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data  && srv_cf_data->result.scores)
         return srv_cf_print_scores_list(srv_cf_data->result.scores, buf, len);
@@ -531,7 +531,7 @@ int fmt_srv_cf_scores_list(ci_request_t *req, char *buf, int len, const char *pa
 
 int fmt_srv_cf_filter(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data  && srv_cf_data->result.action)
         return snprintf(buf, len, "%s", srv_cf_data->result.action->matchingFilter->name);
@@ -541,7 +541,7 @@ int fmt_srv_cf_filter(ci_request_t *req, char *buf, int len, const char *param)
 
 int fmt_srv_cf_filter_matches(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);  
+    struct srv_content_filtering_req_data *srv_cf_data = ci_service_data(req);
     /*Do notwrite more than 512 bytes*/
     if (srv_cf_data  && srv_cf_data->result.action)
         return snprintf(buf, len, "%d", srv_cf_data->result.action_matchesCount);

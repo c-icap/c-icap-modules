@@ -162,7 +162,7 @@ static int clamd_response(int fd, char *buf, size_t size)
             return written; /*return read bytes*/
         }
 
-        s += bytes; 
+        s += bytes;
         remains -= bytes;
     } while(remains > 0 );
 
@@ -372,7 +372,7 @@ int clamd_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
 #ifdef HAVE_FD_PASSING
     if (USE_UNIX_SOCKETS) {
         ret = send_fd(sockfd, fd);
-    } else 
+    } else
 #endif
     {
         /*

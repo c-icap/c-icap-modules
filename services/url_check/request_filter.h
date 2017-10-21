@@ -22,7 +22,7 @@
 #include "c_icap/registry.h"
 
 enum url_check_http_methods {
-    UC_METHOD_UNKNOWN = 0, 
+    UC_METHOD_UNKNOWN = 0,
     UC_HTTP_GET,
     UC_HTTP_POST,
     UC_HTTP_PUT,

@@ -90,7 +90,7 @@ struct av_req_profile {
     char *name;
     int disable_scan;
     int send_percent_data;
-    ci_off_t start_send_after; 
+    ci_off_t start_send_after;
     ci_off_t max_object_size;
     struct av_file_types scan_file_types;
     const av_engine_t *engines[AV_MAX_ENGINES];

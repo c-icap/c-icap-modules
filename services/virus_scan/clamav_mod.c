@@ -170,17 +170,17 @@ int clamav_post_init(struct ci_server_conf *server_conf)
 #else
      if(!virusdb) /* ??????? */
 	 return CI_ERROR;
-     
-     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILES, CLAMAV_MAX_FILES); 
+
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILES, CLAMAV_MAX_FILES);
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_FILES\n");
-     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILESIZE, CLAMAV_MAXFILESIZE); 
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_FILESIZE, CLAMAV_MAXFILESIZE);
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAXFILESIZE\n");
-     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_SCANSIZE, CLAMAV_MAXSCANSIZE); 
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_SCANSIZE, CLAMAV_MAXSCANSIZE);
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAXSCANSIZE\n");
-     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_RECURSION, CLAMAV_MAXRECLEVEL); 
+     ret = cl_engine_set_num(virusdb->db, CL_ENGINE_MAX_RECURSION, CLAMAV_MAXRECLEVEL);
      if(ret != CL_SUCCESS)
 	 ci_debug_printf(1, "srvclamav_post_init_service: WARNING! cannot set CL_ENGINE_MAX_RECURSION\n");
 #endif
@@ -307,7 +307,7 @@ int clamav_init_virusdb()
      if (CLAMAV_TMP) {
 #ifdef HAVE_LIBCLAMAV_095
          if(virusdb)
-             cl_engine_set_str(virusdb->db, CL_ENGINE_TMPDIR, CLAMAV_TMP); 
+             cl_engine_set_str(virusdb->db, CL_ENGINE_TMPDIR, CLAMAV_TMP);
 #else
          cl_settempdir(CLAMAV_TMP, 0);
 #endif
@@ -322,8 +322,8 @@ int clamav_init_virusdb()
 /*
   Instead of using struct virus_db and refcount's someone can use the cl_dup function
   of clamav library, but it is  undocumented so I did not use it.
-  The following implementation we are starting to reload clamav db while threads are 
-  scanning for virus but we are not allow any child to start a new scan until we are 
+  The following implementation we are starting to reload clamav db while threads are
+  scanning for virus but we are not allow any child to start a new scan until we are
   loading DB.
 */
 /*#define DB_NO_FULL_LOCK 1*/
@@ -529,12 +529,12 @@ int clamav_get_versions(unsigned int *level, unsigned int *version, char *str_ve
           return 0;
      }
      sprintf(daily_path, "%s/daily.cvd", cl_retdbdir());
-     
+
      if(stat(daily_path,&daily_stat) != 0){
 	 /* if the clamav_lib_path/daily.cvd does not exists
 	  */
 	 sprintf(daily_path, "%s/daily.cld", cl_retdbdir());
-     
+
 	 if(stat(daily_path,&daily_stat) != 0){
 	     /*
 	       else try to use the clamav_lib_path/daily.inc/daly.info file instead" */
@@ -638,7 +638,7 @@ int cfg_set_pua_list(const char *directive, const char **argv, void *setdata)
     }
     pua_list[len] = '\0';
     ci_debug_printf(2, "%s set to %s\n", directive, pua_list);
-    *(char **)setdata  = pua_list;
+    *(char **)setdata = pua_list;
     return 1;
 }
 

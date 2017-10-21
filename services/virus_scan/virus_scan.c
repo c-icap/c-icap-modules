@@ -140,9 +140,9 @@ static void cmd_reload_istag(const char *name, int type, void *data);
 static int init_body_data(ci_request_t *req);
 
 /*It is dangerous to pass directly fields of the limits structure in conf_variables,
-  becouse in the feature some of this fields will change type (from int to unsigned int 
+  becouse in the feature some of this fields will change type (from int to unsigned int
   or from long to long long etc)
-  I must use global variables and use the post_init_service function to fill the 
+  I must use global variables and use the post_init_service function to fill the
   limits structure.
   But, OK let it go for the time ....
 */
@@ -203,7 +203,6 @@ int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
      ci_service_set_preview(srv_xdata, 1024);
      ci_service_enable_204(srv_xdata);
      ci_service_set_transfer_preview(srv_xdata, "*");
- 
 
      /*Initialize object pools*/
      AVREQDATA_POOL = ci_object_pool_register("av_req_data_t", sizeof(av_req_data_t));
@@ -312,7 +311,7 @@ void *virus_scan_init_request_data(ci_request_t * req)
           data->args.forcescan = 0;
           data->args.sizelimit = 1;
           data->args.mode = 0;
-          
+
           memcpy(data->engine, DEFAULT_ENGINES, AV_MAX_ENGINES * sizeof(av_engine_t *));
 
           if (req->args[0] != '\0') {
@@ -390,7 +389,7 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
              data->max_object_size = prof->max_object_size;
          else
              data->max_object_size = MAX_OBJECT_SIZE;
-         
+
          data->send_percent_bytes = prof->send_percent_data >= 0 ? prof->send_percent_data : SEND_PERCENT_DATA;
          data->start_send_after = prof->start_send_after >= 0 ? prof->start_send_after : START_SEND_AFTER;
 
@@ -412,7 +411,7 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
      if (!data->engine[0]) {
          ci_debug_printf(1, "Antivirus engine is not available, allow 204\n");
          return CI_MOD_ALLOW204;
-     }     
+     }
 
      /*Compute the expected size, will be used by must_scanned*/
      content_size = ci_http_content_length(req);
@@ -489,7 +488,7 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
          ci_debug_printf(5, "Object bigger than max scanable file. \n");
           data->must_scanned = 0;
 
-          if(data->args.mode == 1){ 
+          if(data->args.mode == 1){
               /*We are in simple mode we can not send early ICAP responses. What?*/
               ci_debug_printf(1, "Object does not fit to max object size and early responses are not allowed! \n");
               return CI_ERROR;
@@ -528,7 +527,7 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
      }
 #endif
 
-     if (data->virus_info.virus_found && data->error_page == 0 && 
+     if (data->virus_info.virus_found && data->error_page == 0 &&
          !(data->virus_info.disinfected)) {
           /*Inform user. Q:How? Maybe with a mail...... */
           return CI_EOF;        /* Do not send more data if a virus found and data has sent (readpos!=0) */
@@ -565,7 +564,7 @@ int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      return CI_OK;
 }
 
-int virus_scan(ci_request_t * req, av_req_data_t *data);
+static int virus_scan(ci_request_t * req, av_req_data_t *data);
 int virus_scan_end_of_data_handler(ci_request_t * req)
 {
      av_req_data_t *data = ci_service_data(req);
@@ -590,7 +589,7 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
 			  data->url_log
 	      );
      }
-     if ((data->virus_info.virus_found && data->virus_info.disinfected) && 
+     if ((data->virus_info.virus_found && data->virus_info.disinfected) &&
          (!ci_req_sent_data(req) || data->must_scanned == VIR_SCAN)) {
          rebuild_content_length(req, &data->body);
      }
@@ -598,10 +597,10 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
           if (!ci_req_sent_data(req)) {   /*If no data had sent we can send an error page  */
 #ifdef VIRALATOR_MODE
               if (data->must_scanned == VIR_SCAN) {
-                  /*For file types required the virelator mode then the error page with the 
+                  /*For file types required the virelator mode then the error page with the
                     head data already exist. Release it first. */
                   if (data->error_page) {
-                      ci_membuf_free(data->error_page);                  
+                      ci_membuf_free(data->error_page);
                       data->error_page = NULL;
                   }
                   /* ... do other virmode releases if required ...*/
@@ -625,7 +624,7 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
           return CI_MOD_DONE;
      }
 
-     if (data->virus_info.disinfected) 
+     if (data->virus_info.disinfected)
          ci_request_set_str_attribute(req,"virus_scan:action", "disinfected");
      else
          ci_request_set_str_attribute(req,"virus_scan:action", "passed");
@@ -633,7 +632,7 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
      if (data->must_scanned == VIR_SCAN) {
           endof_data_vir_mode(data, req);
      }
-     else 
+     else
 #endif /* VIRELATOR_MODE */
          if (data->allow204 && !ci_req_sent_data(req) && !data->virus_info.disinfected) {
              ci_debug_printf(6, "virus_scan module: Respond with allow 204\n");
@@ -647,48 +646,73 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
      return CI_MOD_DONE;
 }
 
-int virus_scan(ci_request_t * req, av_req_data_t *data)
+static int handle_deflated(av_req_data_t *data)
 {
-    int ret, scan_status, i;
-#ifdef HAVE_ZLIB
-    const char *err;
-#endif
+    const char *err = NULL;
+    /*
+      Normally antiviruses can not handle deflate encoding, because there is not
+      any way to recognize them. So try to uncompress deflated files before pass them
+      to the antivirus engine.
+    */
+    int ret = CI_UNCOMP_OK;
+
+    if (data->encoded != CI_ENCODE_DEFLATE)
+        return 1;
+
+    if ((data->body.decoded = ci_simple_file_new(0))) {
+        const char *zippedData = NULL;
+        size_t zippedDataLen = 0;
+        if (data->body.type == AV_BT_FILE) {
+            zippedData = ci_simple_file_to_const_string(data->body.store.file);
+            zippedDataLen = data->body.store.file->endpos;
+            /**/
+        } else {
+            assert(data->body.type == AV_BT_MEM);
+            zippedData = data->body.store.mem->buf;
+            zippedDataLen = data->body.store.mem->endpos;
+        }
+        if (zippedData) {
+            ci_debug_printf(3, "Zipped data %p of size %ld\n", zippedData, (long int) zippedDataLen);
+            ret = ci_inflate_to_simple_file(zippedData, zippedDataLen, data->body.decoded, MAX_OBJECT_SIZE);
+            ci_debug_printf(3, "Scan from unzipped file %s of size %lld\n", data->body.decoded->filename, (long long int)data->body.decoded->endpos);
+        }
+    } else {
+        ci_debug_printf(1, "Enable to create temporary file to decode deflated file!\n");
+        ret = CI_UNCOMP_ERR_ERROR;
+    }
+
+
+    if (ret ==CI_UNCOMP_OK)
+        return 1;
+
+    if (ret == CI_UNCOMP_ERR_NONE) /*Exceeds the maximum allowed size*/
+        data->must_scanned = NO_SCAN;
+    else {
+        /*Probably corrupted object. Handle it as virus*/
+        err = ci_inflate_error(ret);
+        if (PASSONERROR) {
+            ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Let it pass due to PassOnError\n", err);
+            return 1;
+        }
+
+        /*virus_scan_inflate_error always return a no null description*/
+        ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Handle object as infected\n", err);
+        strncpy(data->virus_info.virus_name, err, AV_NAME_SIZE);
+        data->virus_info.virus_name[AV_NAME_SIZE - 1] = '\0';
+        data->virus_info.virus_found = 1;
+    }
+    return 0;
+}
+
+static int virus_scan(ci_request_t * req, av_req_data_t *data)
+{
+    int scan_status, i;
 
     if (data->must_scanned == NO_SCAN) {       /*If exceeds the MAX_OBJECT_SIZE for example ......  */
         return CI_OK;
     }
 
-/********************************/
-    ret = 1;
-
-    /*
-      Normally antiviruses can not handle deflate encoding, because there is not
-      any way to recognize them. So try to uncompress deflated files before pass them 
-      to the antivirus engine. 
-    */
-#ifdef HAVE_ZLIB
-    if (data->encoded == CI_ENCODE_DEFLATE) {
-        data->body.decoded = ci_simple_file_new(0);
-        if (!data->body.decoded) {
-            ci_debug_printf(1, "Enable to create temporary file to decode deflated file!\n");
-	    if (PASSONERROR)
-	        return CI_OK;
-            return CI_ERROR;
-        }
-        ci_debug_printf(6, "Scan from unzipped file %s\n", data->body.decoded->filename);
-        if (data->body.type == AV_BT_FILE) {
-            lseek(data->body.store.file->fd, 0, SEEK_SET);
-            ret = virus_scan_inflate(data->body.store.file->fd, data->body.decoded, MAX_OBJECT_SIZE);
-        } else {
-            assert(data->body.type == AV_BT_MEM);
-            ret = virus_scan_inflate_mem(data->body.store.mem->buf, data->body.store.mem->endpos, data->body.decoded, MAX_OBJECT_SIZE);
-        }
-    }
-#endif
-
-#ifdef HAVE_ZLIB
-    if (ret > 0) {
-#endif
+    if (handle_deflated(data)) {
         /*TODO Must check for errors*/
         if (data->engine[0]) {
             for (i=0; data->engine[i] != NULL && !data->virus_info.virus_found; i++) {
@@ -700,7 +724,7 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
                 else // if (data->body.type == AV_BT_MEM)
                     scan_status = data->engine[i]->scan_membuf(data->body.store.mem, &data->virus_info);
 
-                /* we can not disinfect encoded files yet 
+                /* we can not disinfect encoded files yet
                    nor files which partialy sent back to client*/
                 if (data->virus_info.disinfected && (data->body.decoded || ci_req_sent_data(req)))
                     data->virus_info.disinfected = 0;
@@ -717,25 +741,7 @@ int virus_scan(ci_request_t * req, av_req_data_t *data)
         }
         ci_stat_uint64_inc(AV_SCAN_REQS, 1);
         ci_stat_kbs_inc(AV_SCAN_BYTES, (int)av_body_data_size(&data->body));
-#ifdef HAVE_ZLIB
     }
-    else if (ret == 0) /*Exceeds the maximum allowed size*/
-        data->must_scanned = NO_SCAN;
-    else if (ret < 0) {
-        /*Probably corrupted object. Handle it as virus*/
-        err = virus_scan_inflate_error(ret);
-        if (PASSONERROR) {
-            ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Let it pass due to PassOnError\n", err);
-            return CI_OK;
-        }
-
-        /*virus_scan_inflate_error always return a no null description*/
-        ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Handle object as infected\n", err);
-        strncpy(data->virus_info.virus_name, err, AV_NAME_SIZE);
-        data->virus_info.virus_name[AV_NAME_SIZE - 1] = '\0';
-        data->virus_info.virus_found = 1;
-    }
-#endif
     return CI_OK;
 }
 
@@ -764,7 +770,7 @@ static int print_violation(void *d, const void *item)
     if (pb->size <=0)
         return 1; /*Stop iterating*/
 
-    bytes = snprintf(buf, sizeof(buf), "\r\n\t-\r\n\t%s\r\n\t%d\r\n\t%d", 
+    bytes = snprintf(buf, sizeof(buf), "\r\n\t-\r\n\t%s\r\n\t%d\r\n\t%d",
                      sdata->virus,
                      sdata->problemID,
                      sdata->action);
@@ -790,7 +796,7 @@ static void print_xviolations(char *buf, size_t buf_size,  av_virus_info_t *vinf
         snprintf(buf, buf_size, "-");
         return;
     }
-   
+
     i = snprintf(buf, buf_size, "%d", viruses->count);
     pb.buf = buf+i;
     pb.size = buf_size - i;
@@ -830,7 +836,7 @@ static int print_virus_item(void *d, const void *item)
 
     bytes = snprintf(buf, sizeof(buf), "%s%s:%s:%s",
                      (pb->count > 0 ? pb->sep : ""),
-                     sdata->virus, 
+                     sdata->virus,
                      sdata->type,
                      av_action(sdata->action));
     buf[sizeof(buf) - 1] = '\0';
@@ -944,7 +950,7 @@ static int init_body_data(ci_request_t *req)
              if(!(data->engine[i]->options & AV_OPT_MEM_SCAN) || data->engine[i]->scan_membuf == NULL)
                  scan_from_mem = 0;
          }
-         
+
          if (scan_from_mem &&
              data->expected_size > 0 && data->expected_size < CI_BODY_MAX_MEM)
              av_body_data_new(&(data->body), AV_BT_MEM, data->expected_size);
@@ -953,7 +959,7 @@ static int init_body_data(ci_request_t *req)
           /*Icap server can not send data at the begining.
             The following call does not needed because the c-icap
             does not send any data if the ci_req_unlock_data is not called:*/
-          /* ci_req_lock_data(req);*/ 
+          /* ci_req_lock_data(req);*/
 
           /* Let ci_simple_file api to control the percentage of data.
              For now no data can send */
@@ -987,7 +993,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
              return (data->must_scanned = NO_SCAN);
          configured_file_types = &data->profile->scan_file_types;
      }
-     else 
+     else
 #endif
          configured_file_types = &SCAN_FILE_TYPES;
      /*Going to determine the file type,get_filetype can take preview_data as null ....... */
@@ -997,15 +1003,15 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 	 if (ci_http_request_url(req, data->url_log, LOG_URL_SIZE) <= 0)
              strcpy(data->url_log, "-");
 
-	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n", 
+	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n",
 			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
 			 data->url_log);
          /*
            By default do not scan when you are not able to retrieve filetype.
-           TODO: Define configuration parameters to allow user decide if such 
+           TODO: Define configuration parameters to allow user decide if such
                       objects must scanned or not.
           */
-     } 
+     }
      else { /*We have a valid filetype*/
          file_groups = ci_data_type_groups(magic_db, file_type);
          i = 0;
@@ -1028,7 +1034,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
           type = SCAN;
      else if (type == VIR_SCAN && data->args.mode == 1) /*in simple mode */
           type = SCAN;
-     else if(data->args.mode == 4 && type == VIR_SCAN) 
+     else if(data->args.mode == 4 && type == VIR_SCAN)
          type = SCAN; // We are in stream mode, there is no VIR_SCAN
      else if (type == VIR_SCAN && ci_req_type(req) != ICAP_RESPMOD)
           type = SCAN; /*Vir mode will not work in REQMOD requests*/
@@ -1036,18 +1042,18 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 	  ci_debug_printf(1, "Vir mode requested for this file type but \"VirSaveDir\" or/and \"VirHTTPServer\" is not set!");
  	  type = SCAN;
      }
-     
+
      if (type == SCAN && data->args.sizelimit && data->max_object_size &&
          data->expected_size > data->max_object_size) {
          ci_debug_printf(1,
                          "Object size is %" PRINTF_OFF_T " ."
                          " Bigger than max scannable file size (%"
-                         PRINTF_OFF_T "). Allow it.... \n", 
+                         PRINTF_OFF_T "). Allow it.... \n",
                          (CAST_OFF_T) data->expected_size,
                          (CAST_OFF_T) data->max_object_size);
          type = NO_SCAN;
      }
-     
+
      data->must_scanned = type;
      return type;
 }
@@ -1114,8 +1120,8 @@ static void cmd_reload_istag(const char *name, int type, void *data)
 }
 
 /***************************************************************************************/
-/* Parse arguments function - 
-   Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed          
+/* Parse arguments function -
+   Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed
 */
 void virus_scan_parse_args(av_req_data_t * data, char *args)
 {

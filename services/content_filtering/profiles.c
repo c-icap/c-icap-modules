@@ -35,7 +35,7 @@ static int free_profile_step(void *data, const char *name, const void *value)
         if (action.replaceInfo)
             free(action.replaceInfo);
     }
-    
+
     free(prof);
     return 0;
 }
@@ -61,7 +61,7 @@ static int check_profile(void *data, const char *name, const void *value)
     struct checkProfileData *checkData = (struct checkProfileData *)data;
     const srv_cf_profile_t *prof = (const srv_cf_profile_t *)value;
     if (prof->access_list &&
-        (ci_access_entry_match_request(prof->access_list, 
+        (ci_access_entry_match_request(prof->access_list,
                                        checkData->req) == CI_ACCESS_ALLOW)) {
         ci_debug_printf(5, "url_check: profile %s matches!\n", prof->name);
         checkData->prof = prof;
@@ -94,7 +94,7 @@ static void profile_filter_add(srv_cf_profile_t *prof, const srv_cf_user_filter_
     if (prof->filters == NULL)
         prof->filters = ci_list_create(32768, sizeof(srv_cf_filter_apply_t));
     for (prp = ci_list_first(prof->filters); prp != NULL; prp = ci_list_next(prof->filters)) {
-        
+
         if (prp->filter == filter) {
             /*Already exist in list. Check if must marked as possible to replace text*/
             if (action == CF_AC_REPLACE)
@@ -132,7 +132,7 @@ int srv_cf_cfg_profile(const char *directive, const char **argv, void *setdata)
         return 0;
     }
 
-    if (action == CF_AC_ADD_HEADER) { 
+    if (action == CF_AC_ADD_HEADER) {
         if (!argv[3]) {
             ci_debug_printf(1, "Missing header definition for add_header action!\n");
             return 0;
@@ -145,7 +145,7 @@ int srv_cf_cfg_profile(const char *directive, const char **argv, void *setdata)
     }else if (action == CF_AC_REPLACE && argv[3]) {
         /*Count the replaceInfo arguments*/
         for (i = 3, count = 0; argv[i] != NULL; ++i) {
-            if (strncasecmp(argv[i], "replaceInfo=", 12) == 0) 
+            if (strncasecmp(argv[i], "replaceInfo=", 12) == 0)
                 ++count;
         }
         if (count) {
@@ -193,7 +193,7 @@ int srv_cf_cfg_profile(const char *directive, const char **argv, void *setdata)
     actionEntry.matchingFilter = filter;
     actionEntry.replaceInfo = replace;
     strncpy(actionEntry.template, ((template && template[0] != '\0') ? template : "BLOCK"), sizeof(actionEntry.template));
-    actionEntry.template[sizeof(actionEntry.template) - 1] = '\0'; 
+    actionEntry.template[sizeof(actionEntry.template) - 1] = '\0';
 
     if (prof->actions == NULL)
         prof->actions = ci_list_create(32768, sizeof(srv_cf_action_cfg_t));
@@ -244,20 +244,20 @@ int srv_cf_cfg_profile_access(const char *directive, const char **argv, void *se
        ci_debug_printf(1, "srv_url_check: Error: Unknown profile %s!", argv[0]);
        return 0;
    }
-    
-   if ((access_entry = ci_access_entry_new(&(prof->access_list), 
-					   CI_ACCESS_ALLOW))  == NULL) {
+
+   if ((access_entry = ci_access_entry_new(&(prof->access_list),
+					   CI_ACCESS_ALLOW)) == NULL) {
          ci_debug_printf(1, "srv_url_check: Error creating access list for cfg profiles!\n");
          return 0;
      }
-   
+
    error = 0;
    for (argc = 1; argv[argc]!= NULL; argc++) {
        acl_spec_name = argv[argc];
           /*TODO: check return type.....*/
           if (!ci_access_entry_add_acl_by_name(access_entry, acl_spec_name)) {
 	      ci_debug_printf(1,"srv_url_check: Error adding acl spec: %s in profile %s."
-			        " Probably does not exist!\n", 
+			        " Probably does not exist!\n",
 			      acl_spec_name, prof->name);
               error = 1;
           }
@@ -299,7 +299,7 @@ int srv_cf_cfg_profile_option(const char *directive, const char **argv, void *se
         }
         if (prof->maxBodyData < 0)
             prof->maxBodyData = 0;
-            
+
         if (*e == 'k' || *e == 'K' )
             prof->maxBodyData = prof->maxBodyData * 1024;
         else if (*e == 'm' || *e == 'M' )

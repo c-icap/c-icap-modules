@@ -43,7 +43,7 @@ static struct av_req_profile *av_req_profile_create(const char *name) {
 }
 
 static void av_req_profile_destroy(struct av_req_profile *prof) {
- 
+
     av_file_types_destroy(&prof->scan_file_types);
     free(prof);
 }
@@ -83,16 +83,16 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req)
     while(aprof) {
         ci_debug_printf(5, "Check whether we can use profile %s\n", aprof->name);
         if(aprof->access_list &&
-           ci_access_entry_match_request(aprof->access_list, 
-                                         req) == CI_ACCESS_ALLOW) {    
+           ci_access_entry_match_request(aprof->access_list,
+                                         req) == CI_ACCESS_ALLOW) {
             return aprof;
         }
         aprof = aprof->next;
     }
-    
+
     /*If none match return NULL;*/
     ci_debug_printf(8, "None of the profiles matches\n");
-    return NULL;    
+    return NULL;
 }
 
 
@@ -100,7 +100,7 @@ struct av_req_profile *av_req_profile_select(ci_request_t *req)
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
 /*******/
-int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, const char **args) 
+int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, const char **args)
 {
     int i, k;
     if (!prof || !param || !args)
@@ -121,7 +121,7 @@ int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, 
          return cfg_ScanFileTypes(param, args, &prof->scan_file_types);
     }
 #endif
-    else if (strcmp(param, "MaxObjectSize") ==0) {        
+    else if (strcmp(param, "MaxObjectSize") ==0) {
         return ci_cfg_size_off(param, args, &prof->max_object_size);
     }
     else if (strcmp(param, "StartSendingDataAfter") ==0) {
@@ -144,10 +144,10 @@ int ap_req_profile_config_param(struct av_req_profile *prof, const char *param, 
 int cfg_av_req_profile(const char *directive, const char **argv, void *setdata)
 {
     struct av_req_profile *prof;
-    
+
     if(!argv[0] || !argv[1])
         return 0;
-    
+
     prof=av_req_profile_get(argv[0]);
     if (!prof) {
         ci_debug_printf(1, "virus_scan: Error allocating profile %s\n", argv[0]);
@@ -167,37 +167,37 @@ int cfg_av_req_profile_access(const char *directive, const char **argv, void *se
     ci_access_entry_t *access_entry;
     int argc, error;
     const char *acl_spec_name;
-    
+
     if(!argv[0] || !argv[1])
         return 0;
-    
+
     if (!(prof = av_req_profile_search(argv[0]))) {
         ci_debug_printf(1, "Error: Unknown profile %s!", argv[0]);
         return 0;
     }
-    
-    if ((access_entry = ci_access_entry_new(&(prof->access_list), 
-                                            CI_ACCESS_ALLOW))  == NULL) {
+
+    if ((access_entry = ci_access_entry_new(&(prof->access_list),
+                                            CI_ACCESS_ALLOW)) == NULL) {
         ci_debug_printf(1, "Error creating access list for cfg profiles!\n");
         return 0;
     }
-    
+
     error = 0;
     for (argc = 1; argv[argc]!= NULL; argc++) {
         acl_spec_name = argv[argc];
         /*TODO: check return type.....*/
         if (!ci_access_entry_add_acl_by_name(access_entry, acl_spec_name)) {
             ci_debug_printf(1,"Error adding acl spec: %s in profile %s."
-                            " Probably does not exist!\n", 
+                            " Probably does not exist!\n",
                             acl_spec_name, prof->name);
             error = 1;
         }
         else
 	    ci_debug_printf(2,"\tAdding acl spec: %s in profile %s\n", acl_spec_name, prof->name);
     }
-    
+
     if (error)
         return 0;
-    
+
     return 1;
 }

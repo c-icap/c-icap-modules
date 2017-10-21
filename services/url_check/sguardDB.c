@@ -37,10 +37,10 @@ DB_ENV *db_setup(const char *home)
     DB_ENV *dbenv;
     int ret;
 
-    /* * Create an environment and initialize it for additional error * reporting. */ 
-    if ((ret = db_env_create(&dbenv, 0)) != 0) { 
-	return (NULL); 
-    } 
+    /* * Create an environment and initialize it for additional error * reporting. */
+    if ((ret = db_env_create(&dbenv, 0)) != 0) {
+	return (NULL);
+    }
     ci_debug_printf(5,"Environment created OK.\n");
 
 
@@ -51,17 +51,17 @@ DB_ENV *db_setup(const char *home)
       dbenv->set_shm_key(dbenv, 888888L);
       ci_debug_printf(5,"Shared memory set.\n");
     */
-    /* * Specify the shared memory buffer pool cachesize: 5MB. * Databases are in a subdirectory of the environment home. */ 
-    //     if ((ret = dbenv->set_cachesize(dbenv, 0, 5 * 1024 * 1024, 0)) != 0) { 
-    //	  dbenv->err(dbenv, ret, "set_cachesize"); 
-    //	  goto err; 
-    //     } 
+    /* * Specify the shared memory buffer pool cachesize: 5MB. * Databases are in a subdirectory of the environment home. */
+    //     if ((ret = dbenv->set_cachesize(dbenv, 0, 5 * 1024 * 1024, 0)) != 0) {
+    //	  dbenv->err(dbenv, ret, "set_cachesize");
+    //	  goto err;
+    //     }
 
-    /* Open the environment  */ 
-    if ((ret = dbenv->open(dbenv, home, DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL|DB_THREAD /*| DB_SYSTEM_MEM*/, 0)) != 0){ 
+    /* Open the environment  */
+    if ((ret = dbenv->open(dbenv, home, DB_CREATE | DB_INIT_LOCK | DB_INIT_MPOOL|DB_THREAD /*| DB_SYSTEM_MEM*/, 0)) != 0){
 	ci_debug_printf(1, "Environment open failed: %s\n", db_strerror(ret));
-	dbenv->close(dbenv, 0); 
-	return NULL; 
+	dbenv->close(dbenv, 0);
+	return NULL;
     }
     ci_debug_printf(5,"DB setup OK.\n");
 
@@ -74,10 +74,10 @@ int remove_dbenv(char *home)
     DB_ENV *dbenv;
     int ret;
 
-    if ((ret = db_env_create(&dbenv, 0)) != 0) { 
-	ci_debug_printf(1, " %s\n", db_strerror(ret)); 
-	return 0; 
-    } 
+    if ((ret = db_env_create(&dbenv, 0)) != 0) {
+	ci_debug_printf(1, " %s\n", db_strerror(ret));
+	return 0;
+    }
     if(dbenv->remove(dbenv, home, 0)!=0){
 	ci_debug_printf(1, "Error removing environment....\n");
 	return 0;
@@ -186,13 +186,12 @@ void sg_close_db(sg_db_t *sg_db)
 	sg_db->domains_db->close(sg_db->domains_db, 0);
 	sg_db->domains_db = NULL;
     }
-  
+
     if(sg_db->urls_db){
 	sg_db->urls_db->close(sg_db->urls_db, 0);
 	sg_db->urls_db = NULL;
     }
-  
-  
+
     if(sg_db->env_db){
 	sg_db->env_db->close(sg_db->env_db, 0);
 	sg_db->env_db=NULL;
@@ -253,7 +252,7 @@ static int db_entry_exists(DB *dDB, char *entry,int (*cmpkey)(char *,char *,int 
     memset(&key, 0, sizeof(key));
     key.data = entry;
     key.size = strlen(entry);
-  
+
     if ((ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_SET_RANGE)) != 0){
 	ci_debug_printf(5, "db_entry_exists: does not exists: %s\n", db_strerror(ret));
     }
@@ -286,7 +285,7 @@ int sg_url_exists(sg_db_t *sg_db, char *url)
     if (!sg_db->urls_db)
         return 0;
 
-    /*squidGuard removes the www[0-9]*, ftp[0-9]* and web[0-9]* 
+    /*squidGuard removes the www[0-9]*, ftp[0-9]* and web[0-9]*
       prefixes from urls*/
     if ( (url[0] == 'w' && url[1] == 'w' && url[2] == 'w') ||
          (url[0] == 'w' && url[1] == 'e' && url[2] == 'b') ||
@@ -306,14 +305,14 @@ int iterate_db(DB *dDB, int (*action)(char *,int,char *,int))
     int ret, count = 0;
     DBT key, data;
     DBC *L_dDBC;
-  
+
     if ((ret = dDB->cursor(dDB, NULL, &L_dDBC, 0)) != 0) {
 	ci_debug_printf(1, "db->cursor: %s\n", db_strerror(ret));
 	return 0;
     }
     memset(&data, 0, sizeof(data));
     memset(&key, 0, sizeof(key));
-  
+
     if ((ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_FIRST)) != 0){
 	L_dDBC->c_close(L_dDBC);
 	return 0;
@@ -324,7 +323,7 @@ int iterate_db(DB *dDB, int (*action)(char *,int,char *,int))
 	    (*action)((char *)(key.data),key.size,(char *)(data.data),data.size);
 	ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_NEXT);
     }while(ret==0);
-  
+
     L_dDBC->c_close(L_dDBC);
     return count;
 }
@@ -370,7 +369,7 @@ static int db_entry_remove(DB *dDB, char *entry)
     memset(&key, 0, sizeof(key));
     key.data = entry;
     key.size = strlen(entry);
-  
+
     if ((ret = L_dDBC->c_get(L_dDBC, &key, &data, DB_SET)) == 0){
 	ci_debug_printf(5, "db_entry_remove: key exists, going to remove\n");
         ret = L_dDBC->c_del(L_dDBC, 0);
@@ -400,7 +399,7 @@ static char *prepare_entry(char *url, int type)
 
     if (type == sgDomain && *url != '.') {
         /*if it is domain we need a '.' at the beggining*/
-        --url; 
+        --url;
         *url = '.';
     }
 
@@ -410,7 +409,7 @@ static char *prepare_entry(char *url, int type)
 
     /*d now points at the end of string, strip spaces at the end of string*/
     while ((--d) > url && isspace(*d)) *d = '\0';
-    
+
     if (type == sgUrl) {
         /*We need to strip out authentication and port info*/
         p = strchr(url, '/');
@@ -422,7 +421,7 @@ static char *prepare_entry(char *url, int type)
         d = strchr(url, ':');
         if (d && p == NULL) /*No path*/
             *d = '\0'; /*Cut here to keep only domain hostname*/
-        else if (d && d < p) { 
+        else if (d && d < p) {
             while(*p != '0') *d++ = *p++; /*Copy path over port info*/
         }
     }
@@ -489,7 +488,6 @@ int dbUpdate( const char *dbhome, const char *fname, int updatetype)
     else if (strcmp(fname, "domains") == 0)
         onlydomains = 1;
 
-    
     l_db = sg_init_db("LocalName", dbhome, updatetype);
     if (!l_db)
         return -1;
@@ -498,7 +496,7 @@ int dbUpdate( const char *dbhome, const char *fname, int updatetype)
         snprintf(path, CI_MAX_PATH, "%s/domains%s", dbhome, updatetype==sgDBupdate? ".diff":"");
         db_update_from_file(l_db->domains_db, path, updatetype, sgDomain);
     }
-    
+
     if (!onlydomains) {
         snprintf(path, CI_MAX_PATH, "%s/urls%s", dbhome, updatetype==sgDBupdate? ".diff":"");
         db_update_from_file(l_db->urls_db, path, updatetype, sgUrl);
@@ -511,7 +509,7 @@ int dbUpdate( const char *dbhome, const char *fname, int updatetype)
 int urlSearch( sg_db_t *l_db, const char *fname, char *url)
 {
     char domain[512];
-    int i;    
+    int i;
     int onlydomains = 0, onlyurls = 0;
 
     if (!fname)
@@ -532,7 +530,7 @@ int urlSearch( sg_db_t *l_db, const char *fname, char *url)
         for (i = 0; i < (sizeof(domain) -1) && url[i] != '\0' && url[i] != '/'; i++)
             domain[i] = url[i];
         domain[i] = '\0';
-    
+
         if (sg_domain_exists(l_db, domain)) {
             ci_debug_printf(2, "Found %s in domains db\n", domain);
             return 0;
@@ -631,7 +629,7 @@ int main(int argc, char *argv[])
     if (URL)
         SEARCH_MODE = 1;
 
-    modes = DUMP_MODE + UPDATE_MODE + CREATE_MODE + SEARCH_MODE; 
+    modes = DUMP_MODE + UPDATE_MODE + CREATE_MODE + SEARCH_MODE;
     if (modes != 1) {
         ci_debug_printf(1, "\n\n%s one from the \"-C\", \"-u\", \"-s\" or \"--dump\" arguments must be specified\n\n", modes == 0? "At least" : "Only");
         ci_args_usage(argv[0], options);
@@ -661,7 +659,7 @@ int main(int argc, char *argv[])
     } else if (DUMP_MODE)
         ret = dbDump(l_db, sgDBFILE);
 
-    if (l_db) 
+    if (l_db)
         sg_close_db(l_db);
 
     return ret;

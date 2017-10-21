@@ -81,7 +81,7 @@ typedef struct srv_cf_user_filter_data {
     int recursive;
     /*Members for tagging or score or etc....*/
     int score;
-    ci_str_array_t *infoStrings; 
+    ci_str_array_t *infoStrings;
 } srv_cf_user_filter_data_t;
 
 

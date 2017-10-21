@@ -1,6 +1,6 @@
 #
 # To enable url_check service in c-icap, copy this file in c-icap
-# configuration directory and add the following line at the end of 
+# configuration directory and add the following line at the end of
 # c-icap.conf file:
 #      Include srv_content_filtering.conf
 #
@@ -51,7 +51,7 @@ Service srv_cfg_filter srv_content_filtering.so
 #            It can be one of the following:
 #            body: apply the regex expression to body data
 #            url:  apply the regex expression to the http request url
-#            header{HeaderName}: apply the regex expression to the HTTP 
+#            header{HeaderName}: apply the regex expression to the HTTP
 #                                  response header "HeaderName".
 #            request_header{HeaderName}: apply the regex expression to the
 #                                          HTTP request header "HeaderName".
@@ -100,7 +100,7 @@ Service srv_cfg_filter srv_content_filtering.so
 # Format: srv_content_filtering.Profile ProfileName Action score{MatchingFilter[(>|<|=)TheScore]} [Header|template=Templete|replaceInfo=ReplaceTextTag]
 # Description:
 #       It is used to define policy profiles. The use of "default" as
-#	ProfileName is reserved and defines a default policy for all 
+#	ProfileName is reserved and defines a default policy for all
 #	requests for which no profile defined.
 #	
 #	The following actions can be used for a profile:
@@ -119,14 +119,14 @@ Service srv_cfg_filter srv_content_filtering.so
 #	    Example usage:
 #		srv_content_filtering.Match PornScore url /(\ +)(fuck|pussy)(\ +)/i score=10 info{XXX}="$1XXX$3"
 #	        srv_content_filtering.Profile chtsanti replace score{PornScore>5} replaceInfo=XXX
-#	    The above example will replace "fuck" and "pussy" words with the 
+#	    The above example will replace "fuck" and "pussy" words with the
 #	    "XXX" word for documents having PornScore greater than 5.
 # 	
 #	The actions applied if a rule which defined by the score of a matching
 #	filter matches.
 #	The module iterates over defined actions for a profile, examines if the
 #	score rule matches and if yes apply the action, untill the first "allow"
-#	or "block" action.  
+#	or "block" action.
 #       ProfileName
 #               A name for the defined profile.
 #       Action
@@ -136,7 +136,7 @@ Service srv_cfg_filter srv_content_filtering.so
 #                 add_header
 #		  replace
 #	MatchingFilter(>|<|=)TheScode
-#		Used to define a rule for the defined action. The action is 
+#		Used to define a rule for the defined action. The action is
 #		applied if the filter named "MatchingFilter" has score greater
 #		less or equal to the "TheScore"
 #       Header
@@ -152,7 +152,7 @@ Service srv_cfg_filter srv_content_filtering.so
 #		Used with "replace" action.
 #		The information tag which must be used to replace text for a
 #		matching rule
-#               
+#
 # Example:
 #	To block pages with score "PornScore" greater than 15  and replace some
 #	bad words and add an info header to pages with score greater than 5
@@ -173,9 +173,9 @@ Service srv_cfg_filter srv_content_filtering.so
 #	Option can be one of the following:
 #	AnyContentType
 #		By default srv_content_filtering module process only web pages
-#		which are of content type "text/*" (The Content-Type HTTP 
-#		response header includes the value "text/") or 
-#		"application/javascript". 
+#		which are of content type "text/*" (The Content-Type HTTP
+#		response header includes the value "text/") or
+#		"application/javascript".
 #		This option can be used to ignore this rule for the given
 #		profile. This options must always used together with
 #		http_resp_header{Content-Type} or data_type acls in
@@ -202,7 +202,7 @@ Service srv_cfg_filter srv_content_filtering.so
 # TAG: srv_content_filtering.Action
 # Format: srv_content_filtering.Action Action score{MatchingFilter[(>|<|=)TheScore]}
 # Description:
-#       Equivalent to a srv_content_filtering.Profile configuration line 
+#       Equivalent to a srv_content_filtering.Profile configuration line
 #       with the profile name "default":
 #            srv_content_filtering.Profile default ....
 # Default:
