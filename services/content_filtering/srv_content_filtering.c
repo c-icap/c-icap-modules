@@ -57,7 +57,7 @@ struct srv_content_filtering_req_data {
     const srv_cf_profile_t *profile;
     /*the body data*/
     srv_cf_body_t body;
-    enum EncodeMethod enMethod;
+    int enMethod;
     int64_t maxBodyData;
     int64_t expectedData;
     /*flag for marking the eof*/
@@ -173,7 +173,7 @@ void *srv_content_filtering_init_request_data(ci_request_t * req)
     */
     srv_cf_body_init(&srv_content_filtering_data->body);
     srv_content_filtering_data->eof = 0;
-    srv_content_filtering_data->enMethod = emNone;
+    srv_content_filtering_data->enMethod = CI_ENCODE_NONE;
     srv_content_filtering_data->isText = 0;
     srv_content_filtering_data->abort = 0;
     srv_content_filtering_data->isReqmod = 0;
@@ -266,15 +266,16 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
 
      ci_debug_printf(8, "Srv_Content_Filtering service will process the request\n");
 
-     const char *contentEncoding = ci_http_response_get_header(req, "Content-Encoding");
-     if (!contentEncoding)
-         srv_content_filtering_data->enMethod = emNone;
-     else if (strstr(contentEncoding, "gzip") != NULL || strstr(contentEncoding, "deflate") != NULL)
-         srv_content_filtering_data->enMethod = emZlib;
-     else if (strstr(contentEncoding, "bzip2") != NULL)
-         srv_content_filtering_data->enMethod = emBzlib;
+     const char *contentEncoding = NULL;
+     if (req->type == ICAP_RESPMOD)
+         contentEncoding = ci_http_response_get_header(req, "Content-Encoding");
      else
-         srv_content_filtering_data->enMethod = emNone;
+         contentEncoding = ci_http_request_get_header(req, "Content-Encoding");
+
+     if (!contentEncoding)
+         srv_content_filtering_data->enMethod = CI_ENCODE_NONE;
+     else 
+         srv_content_filtering_data->enMethod = ci_encoding_method(contentEncoding);
 
      srv_cf_body_build(&srv_content_filtering_data->body, content_len > 0 ? content_len + 1 : srv_content_filtering_data->maxBodyData);
 

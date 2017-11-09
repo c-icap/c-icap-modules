@@ -27,19 +27,16 @@
 #include <errno.h>
 
 
-int membody_decode(char *inbuf, size_t inlen, ci_membuf_t *outbuf, ci_off_t max_size, enum EncodeMethod encodeMethod)
+int membody_decode(char *inbuf, size_t inlen, ci_membuf_t *outbuf, ci_off_t max_size, int encodeMethod)
 {
-    if (encodeMethod == emNone)
+    if (encodeMethod == CI_ENCODE_NONE)
         return 0;
 
     if (!inbuf || inlen == 0)
         return 0;
 
     int ret = 0;
-    if (encodeMethod == emZlib)
-        ret = ci_inflate_to_membuf(inbuf, inlen, outbuf, 2*1024*1024);
-    else if (encodeMethod == emBzlib)
-        ret = ci_bzunzip_to_membuf(inbuf, inlen, outbuf, 2*1024*1024);
+    ret = ci_decompress_to_membuf(encodeMethod, inbuf, inlen, outbuf, max_size);
 
     if (ret != CI_UNCOMP_OK)
         return 0;
@@ -156,7 +153,7 @@ size_t srv_cf_body_readpos(srv_cf_body_t *body)
 
 ci_membuf_t *srv_cf_body_decoded_membuf(srv_cf_body_t *body,int encoding_method, size_t maxBodyData)
 {
-    if (encoding_method != emNone) {
+    if (encoding_method != CI_ENCODE_NONE) {
         char *body_data = body->body->buf;
         size_t body_data_len = body->body->endpos;
         ci_membuf_t *outbuf = ci_membuf_new_sized(maxBodyData);

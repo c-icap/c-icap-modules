@@ -656,7 +656,7 @@ static int handle_deflated(av_req_data_t *data)
     */
     int ret = CI_UNCOMP_OK;
 
-    if (data->encoded != CI_ENCODE_DEFLATE)
+    if (data->encoded != CI_ENCODE_DEFLATE && data->encoded != CI_ENCODE_BROTLI)
         return 1;
 
     if ((data->body.decoded = ci_simple_file_new(0))) {
@@ -672,8 +672,8 @@ static int handle_deflated(av_req_data_t *data)
             zippedDataLen = data->body.store.mem->endpos;
         }
         if (zippedData) {
-            ci_debug_printf(3, "Zipped data %p of size %ld\n", zippedData, (long int) zippedDataLen);
-            ret = ci_inflate_to_simple_file(zippedData, zippedDataLen, data->body.decoded, MAX_OBJECT_SIZE);
+            ci_debug_printf(3, "Zipped data %p of size %ld, encoding method: %s\n", zippedData, (long int) zippedDataLen, (data->encoded == CI_ENCODE_DEFLATE ? "deflate" : "brotli"));
+            ret = ci_decompress_to_simple_file(data->encoded, zippedData, zippedDataLen, data->body.decoded, MAX_OBJECT_SIZE);
             ci_debug_printf(3, "Scan from unzipped file %s of size %lld\n", data->body.decoded->filename, (long long int)data->body.decoded->endpos);
         }
     } else {
@@ -689,7 +689,7 @@ static int handle_deflated(av_req_data_t *data)
         data->must_scanned = NO_SCAN;
     else {
         /*Probably corrupted object. Handle it as virus*/
-        err = ci_inflate_error(ret);
+        err = ci_decompress_error(ret);
         if (PASSONERROR) {
             ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Let it pass due to PassOnError\n", err);
             return 1;

@@ -41,7 +41,6 @@ ci_membuf_t *srv_cf_body_decoded_membuf(srv_cf_body_t *body, int encoding_method
 void srv_cf_body_replace_body(srv_cf_body_t *body, ci_membuf_t *new_body);
 int srv_cf_body_to_ring(srv_cf_body_t *body);
 
-enum EncodeMethod {emNone, emZlib, emBzlib};
-int membody_decode(char *inbuf, size_t inlen, ci_membuf_t *outbuf, ci_off_t max_size, enum EncodeMethod encodeMethod);
+int membody_decode(char *inbuf, size_t inlen, ci_membuf_t *outbuf, ci_off_t max_size, int encodeMethod);
 
 #endif
