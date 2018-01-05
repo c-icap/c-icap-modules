@@ -1,5 +1,5 @@
 #ifndef __SGUARDDB_H
-#include <db.h>
+#include BDB_HEADER_PATH(db.h)
 
 typedef struct sg_db{
   DB_ENV *env_db;

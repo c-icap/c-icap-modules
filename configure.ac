@@ -8,6 +8,10 @@ AM_MAINTAINER_MODE
 AM_CONFIG_HEADER(autoconf.h)
 
 AM_INIT_AUTOMAKE([subdir-objects])
+AC_CONFIG_MACRO_DIR([m4])
+
+AC_CANONICAL_HOST
+AC_USE_SYSTEM_EXTENSIONS
 
 AC_PROG_CC
 AM_PROG_CC_C_O
@@ -18,12 +22,6 @@ AC_LIBTOOL_DLOPEN
 AC_LIBTOOL_WIN32_DLL
 AC_PROG_LIBTOOL
 AC_SUBST(LIBTOOL_DEPS)
-
-dnl AC_CANONICAL_HOST
-
-if test "x$GCC" != "x" ; then
-        AC_USE_SYSTEM_EXTENSIONS
-fi
 
 CFLAGS="$CFLAGS -Wall"
 
@@ -128,15 +126,17 @@ if test a"$clamav" != "ano"; then
    CFLAGS="$clamavinc $CFLAGS"
    LIBS="$clamavlib -lclamav $LIBS"
    AC_LINK_IFELSE(
+         [AC_LANG_SOURCE(
                 [
                     #include <clamav.h>
                     int main(){
                          char *s = cl_retver();
                          return 0;
                     }
-                ],
-               [clamav="yes";    AC_MSG_RESULT(yes)],
-               [clamav="no";    AC_MSG_RESULT(no)]
+                ])
+         ],
+         [clamav="yes";    AC_MSG_RESULT(yes)],
+         [clamav="no";    AC_MSG_RESULT(no)]
    )
    CFLAGS=$OLDCFLAGS
    LIBS=$OLDLIBS
@@ -205,102 +205,67 @@ AC_ARG_WITH(bdb,
 )
 
 if test a"$libdb" != "ano"; then
-   if test a"$libdbpath" = "a"; then
-#  Save old LDFLAGS
-      OLDLDFLAGS=$LDFLAGS
-      LDFLAGS="$LDFLAGS"
-      OLDLIBS=$LIBS
-      LIBS="-ldb $OLDLIBS"
-      echo -n "checking for Berkeley DB under standard directories... "
-      AC_LINK_IFELSE(
-                     [
-                         #include <db.h>
-                         int main(){
-                              int major,minor,patch;
-                              if (!db_version(&major,&minor,&patch))
-                                   return -1;
-                              return 0;
-                         }
-                     ],	
-	    	     [BDB_ADD_LDADD=" -ldb"; libdb="yes"; echo "yes"],
-                     [libdb="no"; echo "no"]
-       )
-      AC_SUBST(BDB_ADD_LDADD)
-#restore LDFLAGS
-      LDFLAGS=$OLDLDFLAGS
-      LIBS=$OLDLIBS
-   else
-#  Save old CFLAGS/LDFLAGS
-      OLDCFLAGS=$CFLAGS
-      OLDLDFLAGS=$LDFLAGS
-      OLDLIBS=$LIBS
+   #  Save old CFLAGS/LDFLAGS
+   OLDCFLAGS=$CFLAGS
+   OLDLDFLAGS=$LDFLAGS
+   OLDLIBS=$LIBS
+
+   if test "a$libdbpath" != "a"; then
       CFLAGS="-I$libdbpath/include $CFLAGS"
       LDFLAGS="-L$libdbpath/lib $LDFLAGS"
-      LIBS="-ldb"
-      echo -n "checking for Berkeley DB under $libdbpath... "
-      AC_LINK_IFELSE(
-                [
-                    #include <db.h>
-                    int main(){
-                        int major,minor,patch;
-                        if (!db_version(&major,&minor,&patch))
-                             return -1;
-                         return 0;
-                    }
-                ],
-               [BDB_ADD_LDADD="-L$libdbpath/lib -ldb"; BDB_ADD_FLAG="-I$libdbpath/include";libdb="yes"; echo "yes"],
-               [libdb="no"; echo "no"]
-      )
-#restore CFLAGS/LDFLAGS
-     CFLAGS=$OLDCFLAGS
-     LDFLAGS=$OLDLDFLAGS
-     LIBS=$OLDLIBS
    fi
-
-   if test a"$libdb" = "ano"; then
-# Here we still was not able to find a working Berkeley DB library.
-# We are going to see if we can found a Berkeley DB located under a
-# libdbpath/include/db4x and lbdbpath/lib/db4x directories.
-
-     if test a"$libdbpath" = "a"; then
-# if libdbpath is not given try with libdbpat="/usr"
-        libdbpath="/usr"
-     fi
-#  Save old CFLAGS/LDFLAGS
-     OLDCFLAGS=$CFLAGS
-     OLDLDFLAGS=$LDFLAGS
-     OLDLIBS=$LIBS
-     LIBS="-ldb $OLDLIBS"
-     for DBVER in 54 53 52 51 50 49 48 47 46 45 44 43 42; do
-        if test -d $libdbpath/include/db$DBVER; then
-           echo -n "checking for Berleley DB under $libdbpath/include/db$DBVER and $libdbpath/lib/db$DBVER... "
-           CFLAGS="-I$libdbpath/include/db$DBVER $OLDCFLAGS"
-           LDFLAGS="-L$libdbpath/lib/db$DBVER $OLDLDFLAGS"
-           AC_LINK_IFELSE(
-                  [
-                     #include <db.h>
+   # We are going to see if we can found a Berkeley DB located under a
+   # libdbpath/include/db4x directory and use lbdbpath/lib/libdb-4.x library.
+   for DBVER in "" 6 6.3 6.2 6.1 6.0 5 5.4 5.3 5.2 5.1 5.0 4 4.9 4.8 4.7 4.6 4.5 4.4 4.3 4.2; do
+        if test -z $DBVER; then
+           usedblib="-ldb"
+           incdbdir=""
+        else
+           usedblib="-ldb-$DBVER"
+           incdbdir=db`echo $DBVER|sed 's/\.//'`"/"
+        fi
+        if test -z "$libdbpath"; then
+           print_libdbpath="..."
+        else
+            print_libdbpath="under $libdbpath..."
+        fi
+        echo -n "checking for BerleleyDB v$DBVER $print_libdbpath"
+        LIBS="$usedblib $OLD_LIBS"
+        AC_LINK_IFELSE(
+               [AC_LANG_SOURCE(
+                 [
+                     #include <${incdbdir}db.h>
                      int main(){
                         int major,minor,patch;
                         if (!db_version(&major,&minor,&patch))
                              return -1;
                         return 0;
                      }
-                  ],
-                  [echo yes;BDB_ADD_LDADD="-L$libdbpath/lib/db$DBVER -ldb"; BDB_ADD_FLAG="-I$libdbpath/include/db$DBVER";libdb="yes";],
-                  [libdb="no"; echo "no";]
-           )
-        fi
+                  ])
+               ],
+               [echo yes;libdb="yes";],
+               [echo "no";libdb="no";]
+        )
+
         if test a"$libdb" = "ayes"; then
+           BDB_ADD_LDADD=""
+           BDB_ADD_FLAG=""
+           if test "a$libdbpath" != "a"; then
+                BDB_ADD_LDADD="-L$libdbpath/lib "
+                BDB_ADD_FLAG="-I$libdbpath/include"
+           fi
+           BDB_ADD_LDADD="$BDB_ADD_LDADD$usedblib"
+           AC_SUBST(BDB_ADD_LDADD)
+           AC_SUBST(BDB_ADD_FLAG)
+           AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])
+           AC_DEFINE_UNQUOTED(BDB_HEADER_PATH(incfile), [<${incdbdir}incfile>], [Set DB_HEADER_PATH macro to compute berkeley DB header subpath])
            break;
         fi
-     done
-#restore CFLAGS/LDFLAGS
-     CFLAGS=$OLDCFLAGS
-     LDFLAGS=$OLDLDFLAGS
-     LIBS=$OLDLIBS
-   fi
-   AC_SUBST(BDB_ADD_LDADD)
-   AC_SUBST(BDB_ADD_FLAG)
+   done
+
+   CFLAGS=$OLDCFLAGS
+   LDFLAGS=$OLDLDFLAGS
+   LIBS=$OLDLIBS
 fi
 
 if test a"$libdb" = "ayes"; then

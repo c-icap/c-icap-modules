@@ -1,5 +1,5 @@
 
-INCLUDES = -I$(top_srcdir)
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include
 CONFIGDIR = @CONFDIR@
 cicapdatadir=@DATADIR@
 cicapmoduledir=@MODSDIR@
@@ -9,7 +9,7 @@ do_subst=sed -e 's%[@]SYSCONFDIR[@]%$(CONFIGDIR)%g' \
              -e 's%[@]PACKAGE_STRING[@]%$(PACKAGE_STRING)%g'
 
 srv_url_check_la_LIBADD = @MODULES_LIBADD@
-srv_url_check_la_CFLAGS=  -I../../include/
+srv_url_check_la_CFLAGS= 
 srv_url_check_la_LDFLAGS=  -module -avoid-version
 srv_url_check_la_SOURCES = srv_url_check.c url_check_body.c request_filter.c
 
@@ -39,10 +39,10 @@ if USEBDB
 endif
 
 install-data-local:
-	$(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf.default
+	$(INSTALL) $(srcdir)/srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf.default
 	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; then $(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; fi
 	$(mkinstalldirs) $(DESTDIR)$(cicapdatadir)/templates/srv_url_check/en
-	$(INSTALL) $(TMPLS) $(DESTDIR)$(cicapdatadir)/templates/srv_url_check/en/
+	for f in $(TMPLS); do  $(INSTALL) $(srcdir)/$$f $(DESTDIR)$(cicapdatadir)/templates/srv_url_check/en/; done
 
 
 EXTRA_DIST= sguardDB.h url_check_body.h request_filter.h makefile.w32 srv_url_check.def srv_url_check.conf $(TMPLS) $(manpages_src)

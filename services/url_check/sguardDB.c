@@ -1,4 +1,3 @@
-#include "sguardDB.h"
 #include "c_icap/mem.h"
 #include "c_icap/debug.h"
 #include "../../common.h"
@@ -6,6 +5,7 @@
 #include "c_icap/cfg_param.h"
 #include <assert.h>
 #endif
+#include "sguardDB.h"
 
 #define CREATE_FLAGS 0664
 #define TABLE        NULL
