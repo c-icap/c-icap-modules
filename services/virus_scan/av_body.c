@@ -18,6 +18,7 @@
 
 #include "av_body.h"
 #include "c_icap/simple_api.h"
+#include "../../common.h"
 #include <assert.h>
 
 void av_body_data_new(struct av_body_data *bd, enum av_body_type type,  int size)
@@ -114,7 +115,7 @@ int av_body_data_read(struct av_body_data *body, char *buf, int len)
 
 int av_decompress_to_simple_file(int encodeMethod, const char *inbuf, size_t inlen, struct ci_simple_file *outfile, ci_off_t max_size)
 {
-    #if defined(HAVE_CICAP_DECOMPRESS_TO)
+#if defined(HAVE_CICAP_DECOMPRESS_TO)
     return ci_decompress_to_simple_file(encodeMethod, inbuf, inlen, outfile, max_size);
 #else
     if (encodeMethod == CI_ENCODE_GZIP || encodeMethod == CI_ENCODE_DEFLATE)
