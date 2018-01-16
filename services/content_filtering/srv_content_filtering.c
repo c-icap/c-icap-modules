@@ -331,9 +331,11 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
         srv_cf_body_replace_body(&srv_content_filtering_data->body, result->replaceBody);
         snprintf(tmpBuf, sizeof(tmpBuf), "Content-Length: %lld", (long long int)ci_membuf_size(result->replaceBody));
         if (srv_content_filtering_data->isReqmod) {
+            ci_http_request_remove_header(req, "Content-Encoding");
             ci_http_request_remove_header(req, "Content-Length");
             ci_http_request_add_header(req, tmpBuf);
         } else {
+            ci_http_response_remove_header(req, "Content-Encoding");
             ci_http_response_remove_header(req, "Content-Length");
             ci_http_response_add_header(req, tmpBuf);
         }
