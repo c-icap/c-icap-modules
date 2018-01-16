@@ -36,8 +36,18 @@ int membody_decode(char *inbuf, size_t inlen, ci_membuf_t *outbuf, ci_off_t max_
         return 0;
 
     int ret = 0;
+#if defined(HAVE_CICAP_DECOMPRESS_TO)
     ret = ci_decompress_to_membuf(encodeMethod, inbuf, inlen, outbuf, max_size);
-
+#else
+    if (encodeMethod == CI_ENCODE_GZIP || encodeMethod == CI_ENCODE_DEFLATE)
+        ret = ci_inflate_to_membuf(inbuf, inlen, outbuf, max_size);
+    else if (encodeMethod == CI_ENCODE_BZIP2)
+        ret = ci_bzunzip_to_membuf(inbuf, inlen, outbuf, max_size);
+#if defined(HAVE_CICAP_BROTLI)
+    else if (encodeMethod == CI_ENCODE_BROTLI) 
+        ret = ci_brinflate_to_membuf(inbuf, inlen, outbuf, max_size);
+#endif
+#endif
     if (ret != CI_UNCOMP_OK)
         return 0;
 

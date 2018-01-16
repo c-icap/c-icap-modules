@@ -96,6 +96,14 @@ AC_SUBST(CONFDIR)
 AC_SUBST(MODSDIR)
 AC_SUBST(DATADIR)
 
+#Check for icapapi functions
+OLD_LIBS=$LIBS
+LIBS="$LIBS $cicapliblibs"
+AC_CHECK_LIB(icapapi, ci_brinflate_to_simple_file, [cicap_brotli='yes';AC_DEFINE(HAVE_CICAP_BROTLI, 1,Define HAVE_CICAP_BROTLI if c-icap supports brotli)], [cicap_brotli='no'])
+AC_CHECK_LIB(icapapi, ci_decompress_to_simple_file, [cicap_decompress_to='yes';AC_DEFINE(HAVE_CICAP_DECOMPRESS_TO, 1,Define HAVE_CICAP_DECOMPRESS_TO if c-icap has ci_decompress_to_ family functions)], [cicap_decompress_to='no'])
+AC_CHECK_LIB(icapapi, ci_decompress_error, [cicap_decompress_error='yes';AC_DEFINE(HAVE_CICAP_DECOMPRESS_ERROR, 1,Define HAVE_CICAP_DECOMPRESS_ERROR if c-icap has ci_decompress_error function)], [cicap_decompress_error='no'])
+LIBS=$OLD_LIBS
+
 # Checks for libraries
 
 AC_ARG_WITH(clamav,

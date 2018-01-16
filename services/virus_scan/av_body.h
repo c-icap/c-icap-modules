@@ -45,4 +45,5 @@ void av_body_data_release(struct av_body_data *body);
 int av_body_data_write(struct av_body_data *body, char *buf, int len, int iseof);
 int av_body_data_read(struct av_body_data *body, char *buf, int len);
 
+int av_decompress_to_simple_file(int encodingMethod, const char *inbuf, size_t inlen, struct ci_simple_file *outfile, ci_off_t max_size);
 #endif

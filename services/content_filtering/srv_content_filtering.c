@@ -70,6 +70,7 @@ struct srv_content_filtering_req_data {
 
 static void generate_error_page(struct srv_content_filtering_req_data * data, ci_request_t * req, const char *tmpl);
 static void add_xheaders(struct srv_content_filtering_req_data * data, ci_request_t * req);
+static int encoding_method(const char *content_encoding);
 
 /*srv_content_filtering module text formating codes table*/
 static int fmt_srv_cf_action(ci_request_t *req, char *buf, int len, const char *param);
@@ -275,7 +276,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      if (!contentEncoding)
          srv_content_filtering_data->enMethod = CI_ENCODE_NONE;
      else 
-         srv_content_filtering_data->enMethod = ci_encoding_method(contentEncoding);
+         srv_content_filtering_data->enMethod = encoding_method(contentEncoding);
 
      srv_cf_body_build(&srv_content_filtering_data->body, content_len > 0 ? content_len + 1 : srv_content_filtering_data->maxBodyData);
 
@@ -487,6 +488,36 @@ void add_xheaders(struct srv_content_filtering_req_data * data, ci_request_t * r
             );
         ci_icap_add_xheader(req, buf);
     }
+}
+
+
+int encoding_method(const char *content_encoding)
+{
+#if defined(HAVE_CICAP_ENCODING_METHOD)
+    return ci_encoding_method(content_encoding);
+#else
+    if (!content_encoding)
+        return CI_ENCODE_NONE;
+
+    if (strcasestr(content_encoding, "gzip") != NULL) {
+        return CI_ENCODE_GZIP;
+    }
+
+    if (strcasestr(content_encoding, "deflate") != NULL) {
+        return CI_ENCODE_DEFLATE;
+    }
+#if defined(HAVE_CICAP_BROTLI)
+    if (strcasestr(content_encoding, "br") != NULL) {
+        return CI_ENCODE_BROTLI;
+    }
+#endif
+
+    if (strcasestr(content_encoding, "bzip2") != NULL) {
+        return CI_ENCODE_BZIP2;
+    }
+
+    return CI_ENCODE_UNKNOWN;
+#endif
 }
 
 int fmt_srv_cf_action(ci_request_t *req, char *buf, int len, const char *param)
