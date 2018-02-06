@@ -43,6 +43,7 @@ static int CLAMAV_HEURISTIC_PRECEDENCE = 0;
 static int CLAMAV_BLOCKMACROS = 0;
 static int CLAMAV_PHISHING_BLOCKSSL = 0;
 static int CLAMAV_PHISHING_BLOCKCLOAK = 0;
+static int VIRUSONFAILURE = 0;
 
 int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdata);
 int cfg_set_pua_list(const char *directive, const char **argv, void *setdata);
@@ -70,6 +71,7 @@ static struct ci_conf_entry clamav_conf_variables[] = {
      {"OLE2BlockMacros", &CLAMAV_BLOCKMACROS, ci_cfg_onoff, NULL},
      {"PhishingAlwaysBlockSSLMismatch", &CLAMAV_PHISHING_BLOCKSSL, ci_cfg_onoff, NULL},
      {"PhishingAlwaysBlockCloak", &CLAMAV_PHISHING_BLOCKCLOAK, ci_cfg_onoff, NULL},
+     {"ReportVirusOnFailure", &VIRUSONFAILURE, ci_cfg_onoff, NULL},
      {NULL, NULL, NULL, NULL}
 };
 
@@ -507,9 +509,16 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
          ci_vector_add(vinfo->viruses, &a_virus, sizeof(av_virus_t));
      }
      else if (ret != CL_CLEAN) {
+         const char *err = cl_strerror(ret);
          ci_debug_printf(1,
-                         "clamav_mod: An error occured while scanning the data\n");
-         status = 0;
+                         "clamav_mod: An error occured while scanning the data: %s\n", err);
+         if (VIRUSONFAILURE) {
+             /* Report a virus instead of return error*/
+             strncpy(vinfo->virus_name, err, AV_NAME_SIZE);
+             vinfo->virus_name[AV_NAME_SIZE - 1] = '\0';
+             vinfo->virus_found = 1;
+         } else
+             status = 0;
      }
      release_virusdb(vdb);
      return status;
