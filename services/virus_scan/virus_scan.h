@@ -83,7 +83,9 @@ typedef struct av_req_data{
 
 struct av_file_types {
     int *scantypes;
+    int scantypes_num;
     int *scangroups;
+    int scangroups_num;
 };
 
 struct av_req_profile {

@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2004-2012 Christos Tsantilas
+ *  Copyright (C) 2004-2018 Christos Tsantilas
  *
  *  Other contributors/sponsors:
  *      - Multiple av engines support funded by Endian (http://www.endian.com)
@@ -57,8 +57,7 @@ static ci_off_t MAX_OBJECT_SIZE = 5*1024*1024;
 static ci_off_t START_SEND_AFTER = 0;
 static int PASSONERROR = 0;
 
-static struct ci_magics_db *magic_db = NULL;
-static struct av_file_types SCAN_FILE_TYPES = {NULL, NULL};
+static struct av_file_types SCAN_FILE_TYPES = {NULL, 0, NULL, 0};
 
 /*char *VIR_SAVE_DIR="/srv/www/htdocs/downloads/";
   char *VIR_HTTP_SERVER="http://fortune/cgi-bin/get_file.pl?usename=%f&file="; */
@@ -193,7 +192,6 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
                            struct ci_server_conf *server_conf)
 {
-     magic_db = server_conf->MAGIC_DB;
      av_file_types_init(&SCAN_FILE_TYPES);
 #ifdef USE_VSCAN_PROFILES
      av_req_profile_init_profiles();
@@ -1004,7 +1002,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
    The caller is responsible to pass a valid file_type value
 */
      int type, i;
-     int *file_groups;
+     const int *file_groups;
      int file_type;
      const struct av_file_types *configured_file_types = NULL;
      av_req_data_t * data  = ci_service_data(req);;
@@ -1038,11 +1036,11 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
           */
      }
      else { /*We have a valid filetype*/
-         file_groups = ci_data_type_groups(magic_db, file_type);
+         file_groups = ci_magic_type_groups(file_type);
          i = 0;
          if (file_groups) {
-             while ( i < MAX_GROUPS && file_groups[i] >= 0) {
-                 assert(file_groups[i] < ci_magic_groups_num(magic_db));
+             while ( i < CI_MAGIC_MAX_TYPE_GROUPS && file_groups[i] >= 0) {
+                 assert(file_groups[i] < configured_file_types->scangroups_num);
                  if ((type = configured_file_types->scangroups[file_groups[i]]) > 0)
                      break;
                  i++;
@@ -1050,7 +1048,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
          }
 
          if (type == NO_SCAN) {
-             assert(file_type < ci_magic_types_num(magic_db));
+             assert(file_type < configured_file_types->scantypes_num);
              type = configured_file_types->scantypes[file_type];
          }
      }
@@ -1116,15 +1114,21 @@ void generate_error_page(av_req_data_t * data, ci_request_t * req)
 int av_file_types_init( struct av_file_types *ftypes)
 {
     int i;
-    ftypes->scantypes = (int *) malloc(ci_magic_types_num(magic_db) * sizeof(int));
-    ftypes->scangroups = (int *) malloc(ci_magic_groups_num(magic_db) * sizeof(int));
+    if ((ftypes->scantypes_num = ci_magic_types_count()))
+        ftypes->scantypes = (int *) malloc(ftypes->scantypes_num * sizeof(int));
+    else
+        ftypes->scantypes = NULL;
+    if ((ftypes->scangroups_num = ci_magic_groups_count()))
+        ftypes->scangroups = (int *) malloc(ftypes->scangroups_num * sizeof(int));
+    else
+        ftypes->scangroups = NULL;
 
     if (!ftypes->scantypes || !ftypes->scangroups)
         return 0;
 
-    for (i = 0; i < ci_magic_types_num(magic_db); i++)
+    for (i = 0; i < ftypes->scantypes_num; i++)
         ftypes->scantypes[i] = 0;
-    for (i = 0; i < ci_magic_groups_num(magic_db); i++)
+    for (i = 0; i < ftypes->scangroups_num; i++)
         ftypes->scangroups[i] = 0;
     return 1;
 }
@@ -1133,8 +1137,10 @@ void av_file_types_destroy( struct av_file_types *ftypes)
 {
     free(ftypes->scantypes);
     ftypes->scantypes = NULL;
+    ftypes->scantypes_num = 0;
     free(ftypes->scangroups);
     ftypes->scangroups = NULL;
+    ftypes->scangroups_num = 0;
 }
 
 static void cmd_reload_istag(const char *name, int type, void *data)
@@ -1239,9 +1245,9 @@ int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata)
           return 0;
 
      for (i = 0; argv[i] != NULL; i++) {
-          if ((id = ci_get_data_type_id(magic_db, argv[i])) >= 0)
+          if ((id = ci_magic_type_id(argv[i])) >= 0 && id < ftypes->scantypes_num)
                ftypes->scantypes[id] = type;
-          else if ((id = ci_get_data_group_id(magic_db, argv[i])) >= 0)
+          else if ((id = ci_magic_group_id(argv[i])) >= 0 && id < ftypes->scangroups_num)
                ftypes->scangroups[id] = type;
           else
                ci_debug_printf(1, "Unknown data type %s \n", argv[i]);
@@ -1250,13 +1256,13 @@ int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata)
 
      ci_debug_printf(2, "I am going to scan data for %s scanning of type:",
                      (type == 1 ? "simple" : "vir_mode"));
-     for (i = 0; i < ci_magic_types_num(magic_db); i++) {
+     for (i = 0; i < ftypes->scantypes_num; i++) {
           if (ftypes->scantypes[i] == type)
-               ci_debug_printf(2, ",%s", ci_data_type_name(magic_db, i));
+               ci_debug_printf(2, ",%s", ci_magic_type_name(i));
      }
-     for (i = 0; i < ci_magic_groups_num(magic_db); i++) {
+     for (i = 0; i < ftypes->scangroups_num; i++) {
           if (ftypes->scangroups[i] == type)
-               ci_debug_printf(2, ",%s", ci_data_group_name(magic_db, i));
+               ci_debug_printf(2, ",%s", ci_magic_group_name(i));
      }
      ci_debug_printf(1, "\n");
      return 1;
