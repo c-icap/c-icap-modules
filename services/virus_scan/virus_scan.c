@@ -72,6 +72,7 @@ static int AV_SCAN_REQS = -1;
 static int AV_VIRMODE_REQS = -1;
 static int AV_SCAN_BYTES = -1;
 static int AV_VIRUSES_FOUND = -1;
+static int AV_SCAN_FAILURES = -1;
 
 /*********************/
 /* Formating table   */
@@ -213,10 +214,13 @@ int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
      }
 
      /*initialize statistic counters*/
-     AV_SCAN_REQS = ci_stat_entry_register("Requests scanned", STAT_INT64_T,  "Service virus_scan");
-     AV_VIRMODE_REQS = ci_stat_entry_register("Virmode requests", STAT_INT64_T,  "Service virus_scan");
-     AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T,  "Service virus_scan");
-     AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T,  "Service virus_scan");
+     /* TODO:convert to const after fix ci_stat_* api*/
+     char *stats_label = "Service virus_scan";
+     AV_SCAN_REQS = ci_stat_entry_register("Requests scanned", STAT_INT64_T, stats_label);
+     AV_VIRMODE_REQS = ci_stat_entry_register("Virmode requests", STAT_INT64_T, stats_label);
+     AV_SCAN_BYTES = ci_stat_entry_register("Body bytes scanned", STAT_KBS_T, stats_label);
+     AV_VIRUSES_FOUND = ci_stat_entry_register("Viruses found", STAT_INT64_T, stats_label);
+     AV_SCAN_FAILURES = ci_stat_entry_register("Scan failures", STAT_INT64_T, stats_label);
 
      memset(DEFAULT_ENGINES, 0, AV_MAX_ENGINES * sizeof(av_engine_t *));
      return CI_OK;
@@ -698,6 +702,7 @@ static int handle_deflated(av_req_data_t *data)
 #else
         err = ci_inflate_error(ret);
 #endif
+        ci_stat_uint64_inc(AV_SCAN_FAILURES, 1);
         if (PASSONERROR) {
             ci_debug_printf(1, "Unable to uncompress deflate encoded data: %s! Let it pass due to PassOnError\n", err);
             return 1;
@@ -739,10 +744,14 @@ static int virus_scan(ci_request_t * req, av_req_data_t *data)
 
 
                 if (!scan_status) {
+                    ci_stat_uint64_inc(AV_SCAN_FAILURES, 1);
                     ci_debug_printf(1, "Failed to scan web object\n");
-                    if (PASSONERROR)
-                        return CI_OK;
-                    return CI_ERROR;
+                    /* We need to inform the caller proxy for the error,
+                       to give the opportunity to stop using this broken
+                       icap service.
+                     */
+                    if (!PASSONERROR)
+                        return CI_ERROR;
                 }
             }
             build_reply_headers(req, &data->virus_info);
@@ -800,16 +809,16 @@ static void print_xviolations(char *buf, size_t buf_size,  av_virus_info_t *vinf
     ci_vector_t *viruses = vinfo->viruses;
     if (buf_size < 128) return;  /*must have an enough big size*/
 
-    if (!viruses || viruses->count <=0 ) {
+    if (viruses && viruses->count >0) {        
+        i = snprintf(buf, buf_size, "%d", viruses->count);
+        pb.buf = buf+i;
+        pb.size = buf_size - i;
+        ci_vector_iterate(viruses, &pb, print_violation);
+    } else if (vinfo->virus_name[0] != '\0') {
+        snprintf(buf, buf_size, "1\r\n\t-\r\n\t%s\r\n\t0\r\n\t0", vinfo->virus_name);
+    } else
         snprintf(buf, buf_size, "-");
-        return;
-    }
 
-    i = snprintf(buf, buf_size, "%d", viruses->count);
-    pb.buf = buf+i;
-    pb.size = buf_size - i;
-
-    ci_vector_iterate(viruses, &pb, print_violation);
     ci_debug_printf(5, "Print viruses header %s\n", buf);
 }
 
@@ -863,18 +872,26 @@ int print_viruses_list(char *buf, size_t buf_size,  av_virus_info_t *vinfo, cons
 {
     struct print_buf pb;
     ci_vector_t *viruses = vinfo->viruses;
-    if (!viruses)
-        return 0;
-    pb.buf = buf;
-    pb.size = buf_size ;
-    pb.count = 0;
-    if (sep)
-        pb.sep = sep;
-    else
-        pb.sep = ", ";
-    ci_vector_iterate(viruses, &pb, print_virus_item);
-    ci_debug_printf(5, "Print viruses list %s\n", buf);
-    return (buf_size - pb.size);
+    if (viruses) {
+        pb.buf = buf;
+        pb.size = buf_size ;
+        pb.count = 0;
+        if (sep)
+            pb.sep = sep;
+        else
+            pb.sep = ", ";
+        ci_vector_iterate(viruses, &pb, print_virus_item);
+        ci_debug_printf(5, "Print viruses list %s\n", buf);
+        return (buf_size - pb.size);
+    } else if (vinfo->virus_name[0] != '\0') {
+        // If no viruses list provided try the virus_name
+        // On errors only av_virus_info_t::virus_name  updated
+        snprintf(buf, buf_size, "%s::%s", vinfo->virus_name, av_action(AV_NONE));
+    } else {
+        buf[0] = '-';
+        buf[1] = '\0';
+    }
+    return 0;
 }
 
 void build_reply_headers(ci_request_t *req, av_virus_info_t *vinfo)
