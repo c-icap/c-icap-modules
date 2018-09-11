@@ -608,7 +608,7 @@ int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdat
 {
      struct stat stat_buf;
      if (argv == NULL || argv[0] == NULL) {
-          ci_debug_printf(1, "Missing arguments in directive:%s\n", directive);
+          ci_debug_printf(1, "Missing arguments in directive: %s\n", directive);
           return 0;
      }
      if (stat(argv[0], &stat_buf) != 0 || !S_ISDIR(stat_buf.st_mode)) {
@@ -622,7 +622,7 @@ int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdat
 
       */
      CLAMAV_TMP = strdup(argv[0]);
-     ci_debug_printf(2, "Setting parameter :%s=%s\n", directive, argv[0]);
+     ci_debug_printf(2, "Setting parameter: %s=%s\n", directive, argv[0]);
      return 1;
 }
 
