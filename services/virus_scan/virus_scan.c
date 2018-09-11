@@ -45,8 +45,8 @@ static ci_str_vector_t *DEFAULT_ENGINE_NAMES = NULL;
 static const av_engine_t *DEFAULT_ENGINES[AV_MAX_ENGINES];
 
 static void build_reply_headers(ci_request_t *req, av_virus_info_t *vinfo);
-void generate_error_page(av_req_data_t * data, ci_request_t * req);
-char *virus_scan_compute_name(ci_request_t * req);
+void generate_error_page(av_req_data_t *data, ci_request_t *req);
+char *virus_scan_compute_name(ci_request_t *req);
 static void rebuild_content_length(ci_request_t *req, struct av_body_data *body);
 /***********************************************************************************/
 /* Module definitions                                                              */
@@ -111,21 +111,21 @@ static ci_service_xdata_t *virus_scan_xdata = NULL;
 
 static int AVREQDATA_POOL = -1;
 
-static int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
+static int virus_scan_init_service(ci_service_xdata_t *srv_xdata,
                            struct ci_server_conf *server_conf);
-static int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
+static int virus_scan_post_init_service(ci_service_xdata_t *srv_xdata,
                            struct ci_server_conf *server_conf);
 static void virus_scan_close_service();
 static int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
                                     ci_request_t *);
 static int virus_scan_end_of_data_handler(ci_request_t *);
-static void *virus_scan_init_request_data(ci_request_t * req);
+static void *virus_scan_init_request_data(ci_request_t *req);
 static void virus_scan_release_request_data(void *data);
 static int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
-                 ci_request_t * req);
+                 ci_request_t *req);
 
 /*Arguments parse*/
-static void virus_scan_parse_args(av_req_data_t * data, char *args);
+static void virus_scan_parse_args(av_req_data_t *data, char *args);
 /*Configuration Functions*/
 int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata);
 int cfg_SendPercentData(const char *directive, const char **argv, void *setdata);
@@ -135,8 +135,8 @@ int cfg_av_req_profile(const char *directive, const char **argv, void *setdata);
 int cfg_av_req_profile_access(const char *directive, const char **argv, void *setdata);
 #endif
 /*General functions*/
-static int get_filetype(ci_request_t * req, int *encoding);
-static void set_istag(ci_service_xdata_t * srv_xdata);
+static int get_filetype(ci_request_t *req, int *encoding);
+static void set_istag(ci_service_xdata_t *srv_xdata);
 static void cmd_reload_istag(const char *name, int type, void *data);
 static int init_body_data(ci_request_t *req);
 
@@ -190,7 +190,7 @@ CI_DECLARE_MOD_DATA ci_service_module_t service = {
 
 
 
-int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
+int virus_scan_init_service(ci_service_xdata_t *srv_xdata,
                            struct ci_server_conf *server_conf)
 {
      magic_db = server_conf->MAGIC_DB;
@@ -226,7 +226,7 @@ int virus_scan_init_service(ci_service_xdata_t * srv_xdata,
      return CI_OK;
 }
 
-int virus_scan_post_init_service(ci_service_xdata_t * srv_xdata,
+int virus_scan_post_init_service(ci_service_xdata_t *srv_xdata,
                            struct ci_server_conf *server_conf)
 {
     set_istag(virus_scan_xdata);
@@ -278,7 +278,7 @@ void select_default_engine()
     }
 }
 
-void *virus_scan_init_request_data(ci_request_t * req)
+void *virus_scan_init_request_data(ci_request_t *req)
 {
     int preview_size;
      av_req_data_t *data;
@@ -367,7 +367,7 @@ void virus_scan_release_request_data(void *data)
 
 
 int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
-                                    ci_request_t * req)
+                                    ci_request_t *req)
 {
      ci_off_t content_size = 0;
 #ifdef USE_VSCAN_PROFILES
@@ -449,7 +449,7 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
      return CI_MOD_CONTINUE;
 }
 
-int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
+int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t *req)
 {
      /*We can put here scanning hor jscripts and html and raw data ...... */
      int ret;
@@ -518,7 +518,7 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t * req)
 
 
 
-int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
+int virus_scan_write_to_net(char *buf, int len, ci_request_t *req)
 {
      int bytes;
      av_req_data_t *data = ci_service_data(req);
@@ -549,7 +549,7 @@ int virus_scan_write_to_net(char *buf, int len, ci_request_t * req)
 }
 
 int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
-                 ci_request_t * req)
+                 ci_request_t *req)
 {
      if (rbuf && rlen) {
           *rlen = virus_scan_read_from_net(rbuf, *rlen, iseof, req);
@@ -568,8 +568,8 @@ int virus_scan_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int iseof,
      return CI_OK;
 }
 
-static int virus_scan(ci_request_t * req, av_req_data_t *data);
-int virus_scan_end_of_data_handler(ci_request_t * req)
+static int virus_scan(ci_request_t *req, av_req_data_t *data);
+int virus_scan_end_of_data_handler(ci_request_t *req)
 {
      av_req_data_t *data = ci_service_data(req);
      const char *http_client_ip;
@@ -645,7 +645,7 @@ int virus_scan_end_of_data_handler(ci_request_t * req)
      ci_req_unlock_data(req);
      av_body_data_unlock_all(&data->body);   /*Unlock all data to continue send them..... */
 //     ci_debug_printf(6,
-//                     "file unlocked, flags :%d (unlocked:%" PRINTF_OFF_T ")\n",
+//                     "file unlocked, flags: %d (unlocked:%" PRINTF_OFF_T ")\n",
 //                     body->flags, (CAST_OFF_T) body->unlocked);
      return CI_MOD_DONE;
 }
@@ -717,7 +717,7 @@ static int handle_deflated(av_req_data_t *data)
     return 0;
 }
 
-static int virus_scan(ci_request_t * req, av_req_data_t *data)
+static int virus_scan(ci_request_t *req, av_req_data_t *data)
 {
     int scan_status, i;
 
@@ -798,7 +798,7 @@ static int print_violation(void *d, const void *item)
     strcpy(pb->buf, buf);
     pb->buf = pb->buf + bytes;
     pb->size -= bytes;
-    ci_debug_printf(5, "Print violation : %s (next bytes :%d)\n", buf, pb->size);
+    ci_debug_printf(5, "Print violation: %s (next bytes: %d)\n", buf, pb->size);
     return 0;
 }
 
@@ -864,7 +864,7 @@ static int print_virus_item(void *d, const void *item)
     pb->buf = pb->buf + bytes;
     pb->size -= bytes;
     pb->count++;
-    ci_debug_printf(5, "Print violation : %s (next bytes :%d)\n", buf, pb->size);
+    ci_debug_printf(5, "Print violation: %s (next bytes: %d)\n", buf, pb->size);
     return 0;
 }
 
@@ -935,7 +935,7 @@ static int istag_update_md5(void *ctx, const char *name, const void *engine_ptr)
     return 0;
 }
 
-void set_istag(ci_service_xdata_t * srv_xdata)
+void set_istag(ci_service_xdata_t *srv_xdata)
 {
      char istag[SERVICE_ISTAG_SIZE + 1];
      struct ci_MD5Context mdctx;
@@ -949,7 +949,7 @@ void set_istag(ci_service_xdata_t * srv_xdata)
      ci_service_set_istag(srv_xdata, istag);
 }
 
-int get_filetype(ci_request_t * req, int *iscompressed)
+int get_filetype(ci_request_t *req, int *iscompressed)
 {
       int filetype;
       /*Use the ci_magic_req_data_type which caches the result*/
@@ -998,7 +998,7 @@ static int init_body_data(ci_request_t *req)
      return CI_OK;
 }
 
-int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
+int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len)
 {
 /* We are assuming that file_type is a valid file type.
    The caller is responsible to pass a valid file_type value
@@ -1007,7 +1007,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
      int *file_groups;
      int file_type;
      const struct av_file_types *configured_file_types = NULL;
-     av_req_data_t * data  = ci_service_data(req);;
+     av_req_data_t *data  = ci_service_data(req);;
 
      /*By default do not scan*/
      type = NO_SCAN;
@@ -1028,7 +1028,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
 	 if (ci_http_request_url(req, data->url_log, LOG_URL_SIZE) <= 0)
              strcpy(data->url_log, "-");
 
-	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url :%s\n",
+	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url: %s\n",
 			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
 			 data->url_log);
          /*
@@ -1083,7 +1083,7 @@ int must_scanned(ci_request_t * req, char *preview_data, int preview_data_len)
      return type;
 }
 
-void generate_error_page(av_req_data_t * data, ci_request_t * req)
+void generate_error_page(av_req_data_t *data, ci_request_t *req)
 {
      ci_membuf_t *error_page;
      char buf[1024];
@@ -1148,7 +1148,7 @@ static void cmd_reload_istag(const char *name, int type, void *data)
 /* Parse arguments function -
    Current arguments: allow204=on|off, force=on, sizelimit=off, mode=simple|vir|mixed
 */
-void virus_scan_parse_args(av_req_data_t * data, char *args)
+void virus_scan_parse_args(av_req_data_t *data, char *args)
 {
      char *str;
      size_t s;
@@ -1279,7 +1279,7 @@ int cfg_SendPercentData(const char *directive, const char **argv, void *setdata)
      }
 
      *((int *) setdata) = val;
-     ci_debug_printf(2, "Setting parameter :%s=%d\n", directive, val);
+     ci_debug_printf(2, "Setting parameter: %s=%d\n", directive, val);
      return 1;
 }
 
