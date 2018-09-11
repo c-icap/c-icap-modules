@@ -63,7 +63,7 @@ int http_header_addIfNone_cb(const struct cfg_request_filter *flt, ci_request_t 
      heads = ci_http_request_headers(req);
      if (!heads || ci_headers_search(heads, data->head))
           return 0;
-     bytes = snprintf(buf, sizeof(buf), "%s :", data->head);
+     bytes = snprintf(buf, sizeof(buf), "%s: ", data->head);
      if (bytes >= sizeof(buf))
           return 0;
      if (ci_format_text(req, data->value, buf + bytes, sizeof(buf) - bytes, srv_urlcheck_format_table))
@@ -126,7 +126,7 @@ int http_header_listadd_cb(const struct cfg_request_filter *flt, ci_request_t *r
      if (!heads)
           return 0;
      const char *val = ci_headers_search(heads, data->head);
-     bytes = snprintf(buf, sizeof(buf), "%s :%s%s", data->head, val ? val : "", val && *val != '\0' ? ", " : "");
+     bytes = snprintf(buf, sizeof(buf), "%s: %s%s", data->head, val ? val : "", val && *val != '\0' ? ", " : "");
      if (bytes >= sizeof(buf))
           return 0;
      if (ci_format_text(req, data->value, buf + bytes, sizeof(buf) - bytes, srv_urlcheck_format_table))
@@ -146,7 +146,7 @@ int http_header_replace_cb(const struct cfg_request_filter *flt, ci_request_t *r
      if (!heads)
           return 0;
 
-     bytes = snprintf(buf, sizeof(buf), "%s :", data->head);
+     bytes = snprintf(buf, sizeof(buf), "%s: ", data->head);
      if (bytes >= sizeof(buf))
           return 0;
 
