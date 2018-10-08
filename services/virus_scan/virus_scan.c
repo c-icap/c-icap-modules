@@ -1254,7 +1254,7 @@ int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata)
 
      }
 
-     ci_debug_printf(2, "I am going to scan data for %s scanning of type:",
+     ci_debug_printf(2, "I am going to scan data for %s scanning of type: ",
                      (type == 1 ? "simple" : "vir_mode"));
      for (i = 0; i < ftypes->scantypes_num; i++) {
           if (ftypes->scantypes[i] == type)
