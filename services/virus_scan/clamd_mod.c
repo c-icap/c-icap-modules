@@ -156,9 +156,9 @@ static void releasePool()
     PoolGoingDown = 1;
     ci_thread_mutex_destroy(&PoolMtx);
     
-    struct clamd_conn *tmp = NULL;
-    while(ci_list_pop(Pool, tmp)) {
-        clamd_release_connection(tmp, 1);
+    struct clamd_conn tmp;
+    while(ci_list_pop(Pool, &tmp)) {
+        clamd_release_connection(&tmp, 1);
     }
     ci_list_destroy(Pool);
     Pool = NULL;
