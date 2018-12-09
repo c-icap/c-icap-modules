@@ -65,7 +65,7 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
           temp_file_name = ci_buffer_alloc(strlen(data->requested_filename) + 1);
           if(url_decoder(data->requested_filename, temp_file_name, strlen(data->requested_filename) + 1))
           {
-               av_body_data_named(&data->body, VIR_SAVE_DIR, data->requested_filename);
+               av_body_data_named(&data->body, VIR_SAVE_DIR, temp_file_name);
                if (data->body.type == AV_BT_NONE)
                     av_body_data_named(&data->body, VIR_SAVE_DIR, NULL);
           }
