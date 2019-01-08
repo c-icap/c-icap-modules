@@ -43,6 +43,15 @@ static int CLAMAV_HEURISTIC_PRECEDENCE = 0;
 static int CLAMAV_BLOCKMACROS = 0;
 static int CLAMAV_PHISHING_BLOCKSSL = 0;
 static int CLAMAV_PHISHING_BLOCKCLOAK = 0;
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED)
+static int CLAMAV_DLP_BLOCKSTRUCTURED = 0;
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_NORMAL)
+static int CLAMAV_DLP_BLOCKSTRUCTURED_SSN_NORMAL = 0;
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_STRIPPED)
+static int CLAMAV_DLP_BLOCKSTRUCTURED_SSN_STRIPPED = 0;
+#endif
 static int VIRUSONFAILURE = 0;
 
 int cfg_virus_scan_TmpDir(const char *directive, const char **argv, void *setdata);
@@ -71,6 +80,15 @@ static struct ci_conf_entry clamav_conf_variables[] = {
      {"OLE2BlockMacros", &CLAMAV_BLOCKMACROS, ci_cfg_onoff, NULL},
      {"PhishingAlwaysBlockSSLMismatch", &CLAMAV_PHISHING_BLOCKSSL, ci_cfg_onoff, NULL},
      {"PhishingAlwaysBlockCloak", &CLAMAV_PHISHING_BLOCKCLOAK, ci_cfg_onoff, NULL},
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED)
+     {"ProtectCCNumSSN", &CLAMAV_DLP_BLOCKSTRUCTURED, ci_cfg_onoff, NULL},
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_NORMAL)
+     {"ProtectSSNNormal", &CLAMAV_DLP_BLOCKSTRUCTURED_SSN_NORMAL, ci_cfg_onoff, NULL},
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_STRIPPED)
+     {"ProtectSSNStripped", &CLAMAV_DLP_BLOCKSTRUCTURED_SSN_STRIPPED, ci_cfg_onoff, NULL},
+#endif
      {"ReportVirusOnFailure", &VIRUSONFAILURE, ci_cfg_onoff, NULL},
      {NULL, NULL, NULL, NULL}
 };
@@ -125,7 +143,11 @@ struct virus_db {
 #ifndef HAVE_LIBCLAMAV_095
 struct cl_limits limits;
 #endif
+#ifndef HAVE_CL_SCAN_OPTIONS
 unsigned int CLAMSCAN_OPTIONS = CL_SCAN_STDOPT;
+#else
+struct cl_scan_options CLAMSCAN_OPTIONS;
+#endif
 
 struct virus_db *virusdb = NULL;
 struct virus_db *old_virusdb = NULL;
@@ -188,29 +210,106 @@ int clamav_post_init(struct ci_server_conf *server_conf)
 #endif
 
      /*Build scan options*/
+#ifdef HAVE_CL_SCAN_OPTIONS
+     memset(&CLAMSCAN_OPTIONS, 1, sizeof(CLAMSCAN_OPTIONS));
+     CLAMSCAN_OPTIONS.parse = ~0;
+#endif
 #if defined(CL_SCAN_BLOCKENCRYPTED)
      if (CLAMAV_BLOCKENCRYPTED)
          CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKENCRYPTED;
+#endif
+#if defined(CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE)
+     if (CLAMAV_BLOCKENCRYPTED)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_ENCRYPTED_DOC;
+     }
 #endif
 #if defined(CL_SCAN_BLOCKBROKEN)
      if (CLAMAV_BLOCKBROKEN)
          CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKBROKEN;
 #endif
+#if defined(CL_SCAN_HEURISTIC_BROKEN)
+     if (CLAMAV_BLOCKBROKEN)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_BROKEN;
+     }
+#endif
 #if defined(CL_SCAN_HEURISTIC_PRECEDENCE)
      if (CLAMAV_HEURISTIC_PRECEDENCE)
          CLAMSCAN_OPTIONS |= CL_SCAN_HEURISTIC_PRECEDENCE;
+#endif
+#if defined(CL_SCAN_GENERAL_HEURISTIC_PRECEDENCE)
+     if (CLAMAV_HEURISTIC_PRECEDENCE)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_GENERAL_HEURISTIC_PRECEDENCE;
+     }
 #endif
 #if defined(CL_SCAN_BLOCKMACROS)
      if (CLAMAV_BLOCKMACROS)
          CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKMACROS;
 #endif
+#if defined(CL_SCAN_HEURISTIC_MACROS)
+     if (CLAMAV_BLOCKMACROS)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_MACROS;
+     }
+#endif
 #if defined(CL_SCAN_PHISHING_BLOCKSSL)
      if (CLAMAV_PHISHING_BLOCKSSL)
          CLAMSCAN_OPTIONS |= CL_SCAN_PHISHING_BLOCKSSL;
 #endif
+#if defined(CL_SCAN_HEURISTIC_PHISHING_SSL_MISMATCH)
+     if (CLAMAV_PHISHING_BLOCKSSL)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_PHISHING_SSL_MISMATCH;
+     }
+#endif
 #if defined(CL_SCAN_PHISHING_BLOCKCLOAK)
      if (CLAMAV_PHISHING_BLOCKCLOAK)
          CLAMSCAN_OPTIONS |= CL_SCAN_PHISHING_BLOCKCLOAK;
+#endif
+#if defined(CL_SCAN_HEURISTIC_PHISHING_CLOAK)
+     if (CLAMAV_PHISHING_BLOCKCLOAK)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_PHISHING_CLOAK;
+     }
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED)
+     if (CLAMAV_DLP_BLOCKSTRUCTURED)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_STRUCTURED;
+     }
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_NORMAL)
+     if (CLAMAV_DLP_BLOCKSTRUCTURED_SSN_NORMAL)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_STRUCTURED;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_STRUCTURED_SSN_NORMAL;
+     }
+#endif
+#if defined(CL_SCAN_HEURISTIC_STRUCTURED_SSN_STRIPPED)
+     if (CLAMAV_DLP_BLOCKSTRUCTURED_SSN_STRIPPED)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_STRUCTURED;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_STRUCTURED_SSN_STRIPPED;
+     }
+#endif
+#if defined(CL_SCAN_HEURISTIC_EXCEEDS_MAX)
+     if (VIRUSONFAILURE)
+     {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_EXCEEDS_MAX;
+     }
 #endif
 
      clamav_set_versions();
@@ -485,14 +584,18 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
     vinfo->virus_found = 0;
      vdb = get_virusdb();
      lseek(fd, 0, SEEK_SET);
-#ifndef HAVE_LIBCLAMAV_095
+#if !defined(HAVE_LIBCLAMAV_095) && !defined(HAVE_CL_SCAN_OPTIONS)
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb, &limits,
                      CLAMSCAN_OPTIONS);
-#else
+#elif !defined(HAVE_CL_SCAN_OPTIONS)
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb,
                      CLAMSCAN_OPTIONS);
+#else
+     ret =
+         cl_scandesc(fd, NULL, &virname, &scanned_data, vdb,
+                     &CLAMSCAN_OPTIONS);
 #endif
 
      status = 1;
