@@ -59,8 +59,9 @@ void init_vir_mode_data(ci_request_t * req, av_req_data_t * data)
        called before destroy the HTTP response headers.
       */
      if ((data->requested_filename = virus_scan_compute_name(req)) != NULL) {
-          /* data->requested_filename may contain escaped characters, if so we must
-             remove them in the file name, but not requested file name.
+          /* data->requested_filename may contain escaped characters,
+             so we must remove them from the file name, but not from 
+             data->requested_filename.
           */
           temp_file_name = ci_buffer_alloc(strlen(data->requested_filename) + 1);
           if(url_decoder(data->requested_filename, temp_file_name, strlen(data->requested_filename) + 1))
