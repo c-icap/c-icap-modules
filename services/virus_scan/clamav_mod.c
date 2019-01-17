@@ -123,7 +123,12 @@ struct virus_db {
 #ifndef HAVE_LIBCLAMAV_095
 struct cl_limits limits;
 #endif
+
+#ifdef HAVE_CL_SCAN_OPTIONS
+struct cl_scan_options CLAMSCAN_OPTIONS;
+#else
 unsigned int CLAMSCAN_OPTIONS = CL_SCAN_STDOPT;
+#endif
 
 struct virus_db *virusdb = NULL;
 struct virus_db *old_virusdb = NULL;
@@ -186,6 +191,55 @@ int clamav_post_init(struct ci_server_conf *server_conf)
 #endif
 
      /*Build scan options*/
+#ifdef HAVE_CL_SCAN_OPTIONS
+     memset(&CLAMSCAN_OPTIONS, 1, sizeof(CLAMSCAN_OPTIONS));
+     CLAMSCAN_OPTIONS.parse = ~0;
+
+#if defined(CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE)
+     if (CLAMAV_BLOCKENCRYPTED) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_ENCRYPTED_DOC;
+     }
+#endif
+
+#if defined(CL_SCAN_HEURISTIC_BROKEN)
+     if (CLAMAV_BLOCKBROKEN) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_BROKEN;
+     }
+#endif
+
+#if defined(CL_SCAN_GENERAL_HEURISTIC_PRECEDENCE)
+     if (CLAMAV_HEURISTIC_PRECEDENCE) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_GENERAL_HEURISTIC_PRECEDENCE;
+     }
+#endif
+
+#if defined(CL_SCAN_HEURISTIC_MACROS)
+     if (CLAMAV_BLOCKMACROS) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_MACROS;
+     }
+#endif
+
+#if defined(CL_SCAN_HEURISTIC_PHISHING_SSL_MISMATCH)
+     if (CLAMAV_PHISHING_BLOCKSSL) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_PHISHING_SSL_MISMATCH;
+     }
+#endif
+
+#if defined(CL_SCAN_HEURISTIC_PHISHING_CLOAK)
+     if (CLAMAV_PHISHING_BLOCKCLOAK) {
+         CLAMSCAN_OPTIONS.general |= CL_SCAN_GENERAL_HEURISTICS;
+         CLAMSCAN_OPTIONS.heuristic |= CL_SCAN_HEURISTIC_PHISHING_CLOAK;
+     }
+#endif
+
+#else /*!HAVE_CL_SCAN_OPTIONS*/
+
 #if defined(CL_SCAN_BLOCKENCRYPTED)
      if (CLAMAV_BLOCKENCRYPTED)
          CLAMSCAN_OPTIONS |= CL_SCAN_BLOCKENCRYPTED;
@@ -210,6 +264,8 @@ int clamav_post_init(struct ci_server_conf *server_conf)
      if (CLAMAV_PHISHING_BLOCKCLOAK)
          CLAMSCAN_OPTIONS |= CL_SCAN_PHISHING_BLOCKCLOAK;
 #endif
+
+#endif /*HAVE_CL_SCAN_OPTIONS*/
 
      clamav_set_versions();
      av_register_engine(&clamav_engine);
@@ -483,7 +539,11 @@ int clamav_scan_simple_file(ci_simple_file_t *body, av_virus_info_t *vinfo)
     vinfo->virus_found = 0;
      vdb = get_virusdb();
      lseek(fd, 0, SEEK_SET);
-#ifndef HAVE_LIBCLAMAV_095
+#if defined(HAVE_CL_SCAN_OPTIONS)
+     ret =
+         cl_scandesc(fd, NULL, &virname, &scanned_data, vdb,
+                     &CLAMSCAN_OPTIONS);
+#elif !defined(HAVE_LIBCLAMAV_095)
      ret =
          cl_scandesc(fd, &virname, &scanned_data, vdb, &limits,
                      CLAMSCAN_OPTIONS);

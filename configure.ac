@@ -187,7 +187,19 @@ if test a"$clamav" = "ayes"; then
     AC_DEFINE(HAVE_LIBCLAMAV_095,1,[Define HAVE_LIBCLAMAV_095 if have clamav 0.95.x or newer])
     AC_MSG_RESULT(yes),
     )
+
+    #
+    # clamav dropped CL_SCAN_HEURISTIC_ENCRYPTED in 0.101 replacing it with
+    # CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE and CL_SCAN_HEURISTIC_ENCRYPTED_DOC
     # restore flags  / clamav tests
+    AC_MSG_CHECKING([for HAVE_CL_SCAN_OPTIONS in clamav.h])
+    AC_TRY_COMPILE(
+    [#include <clamav.h>],
+    [struct cl_scan_options CLAMSCAN_OPTIONS = { 0, 0, 0, 0, 0 };],
+    AC_DEFINE(HAVE_CL_SCAN_OPTIONS,1,[Define HAVE_CL_SCAN_OPTIONS if have clamav 0.101.x or newer])
+    AC_MSG_RESULT(yes),
+    AC_MSG_RESULT(no),
+    )
     CFLAGS=$OLD_CFLAGS
 fi # if test a"$clamav" = "ayes";
 
