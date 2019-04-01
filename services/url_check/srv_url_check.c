@@ -112,7 +112,8 @@ static struct lookup_db *new_lookup_db(const char *name, const char *descr, int 
 				);
 /* ALL lookup_db functions*/
 static int all_lookup_db(struct lookup_db *ldb, struct url_check_http_info *http_info, struct match_info *match_info, ci_ptr_vector_t *subcats);
-static void release_lookup_dbs();
+static void release_lookup_db(struct lookup_db *ldb);
+static void unload_and_release_lookup_dbs();
 
 enum basic_actions_enum {DB_BLOCK = 0, DB_PASS, DB_MATCH, DB_ACT_MAX};
 
@@ -315,7 +316,7 @@ void url_check_close_service()
 
     profile_release();
     ci_object_pool_unregister(URL_CHECK_DATA_POOL);
-    release_lookup_dbs();
+    unload_and_release_lookup_dbs();
 }
 
 
@@ -912,18 +913,24 @@ struct lookup_db *search_lookup_db(const char *name)
   return tmp_ldb;
 }
 
-void release_lookup_dbs()
+void release_lookup_db(struct lookup_db *ldb)
+{
+    if (ldb->name)
+        free(ldb->name);
+    if (ldb->descr)
+      free(ldb->descr);
+    free(ldb);
+}
+
+void unload_and_release_lookup_dbs()
 {
   struct lookup_db *tmp_ldb;
 
   while((tmp_ldb = LOOKUP_DBS)){
     LOOKUP_DBS = LOOKUP_DBS->next;
-    free(tmp_ldb->name);
-    if (tmp_ldb->descr)
-      free(tmp_ldb->descr);
     if(tmp_ldb->release_db)
       tmp_ldb->release_db(tmp_ldb);
-    free(tmp_ldb);
+    release_lookup_db(tmp_ldb);
   }
 }
 
@@ -1004,7 +1011,7 @@ struct profile *profile_check_add(const char *name)
   return (PROFILES = tmp_profile);
 }
 
-struct access_db *access_db_add_db(struct access_db **db_list, struct lookup_db *db, int type, ci_ptr_vector_t *cats)
+static struct access_db *access_db_list_add(struct access_db **db_list, struct lookup_db *db, int type, ci_ptr_vector_t *cats)
 {
   struct access_db *new_adb,*tmp_adb;
   if(!db_list || !db)
@@ -1026,6 +1033,25 @@ struct access_db *access_db_add_db(struct access_db **db_list, struct lookup_db 
   tmp_adb->next = new_adb;
 
   return new_adb;
+}
+
+static void access_db_list_free(struct access_db *db_list)
+{
+    struct access_db *tmp;
+    int i;
+    struct subcats_data *sdata;
+    while((tmp = db_list)) {
+        db_list = db_list->next;
+        if (tmp->subcats) {
+            for (i = 0; (sdata = (struct subcats_data *)ci_ptr_vector_get(tmp->subcats, i)) != NULL; i++) {
+                free((void *)sdata->str);
+                free(sdata);
+            }
+            ci_ptr_vector_destroy(tmp->subcats);
+        }
+        free(tmp);
+    }
+
 }
 
 int profile_access(ci_request_t *req, const struct profile *prof)
@@ -1370,8 +1396,10 @@ int cfg_load_sg_db(const char *directive, const char **argv, void *setdata)
 
   if(ldb) {
     db_data = malloc(sizeof(struct command_sg_db_data));
-    if (!db_data)
+    if (!db_data) {
+      release_lookup_db(ldb);
       return 0;
+    }
     strncpy(db_data->path, argv[1], CI_MAX_PATH);
     db_data->path[CI_MAX_PATH-1] = '\0';
     db_data->ldb = ldb;
@@ -1745,6 +1773,8 @@ void *cfg_basic_actions(const char **argv)
         db_name = parse_argument(argv[i], &cats);
         if (!db_name) {
             ci_debug_printf(1, "srv_url_check: Configuration error or error allocation memory: %s ... %s\n", argv[0], argv[i]);
+            if (adb)
+                access_db_list_free(adb);
             return NULL;
         }
         db = search_lookup_db(db_name);
@@ -1753,7 +1783,7 @@ void *cfg_basic_actions(const char **argv)
         }
         else {
             ci_debug_printf(2,"%s ",db_name);
-            access_db_add_db(&adb, db, type, cats);
+            access_db_list_add(&adb, db, type, cats);
         }
         free(db_name);
         db_name = NULL;
@@ -1809,20 +1839,7 @@ unsigned int action_basic_action(ci_request_t *req, const struct url_check_actio
 void free_basic_action(void *data)
 {
     struct access_db *adb = (struct access_db *)data;
-    struct access_db *tmp = adb;
-    int i;
-    struct subcats_data *sdata;
-    while((tmp = adb)) {
-        adb = adb->next;
-        if (tmp->subcats) {
-            for (i = 0; (sdata = (struct subcats_data *)ci_ptr_vector_get(tmp->subcats, i)) != NULL; i++) {
-                free((void *)sdata->str);
-                free(sdata);
-            }
-            ci_ptr_vector_destroy(tmp->subcats);
-        }
-        free(tmp);
-    }
+    access_db_list_free(adb);
 }
 
 static void srv_uc_actions_init()
