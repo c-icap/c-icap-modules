@@ -23,6 +23,17 @@ AC_LIBTOOL_WIN32_DLL
 AC_PROG_LIBTOOL
 AC_SUBST(LIBTOOL_DEPS)
 
+case "$host_os" in
+      cygwin*)
+        MODS_LDFLAGS="-no-undefined"
+        iscygwin="yes"
+      ;;
+      *)
+        MODS_LDFLAGS=""
+      ;;
+esac
+AC_SUBST(MODS_LDFLAGS)
+
 CFLAGS="$CFLAGS -Wall"
 
 AC_ARG_ENABLE(virus_scan_profiles,

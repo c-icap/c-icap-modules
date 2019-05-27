@@ -11,7 +11,7 @@ cicapmodule_LTLIBRARIES=srv_content_filtering.la
 
 srv_content_filtering_la_LIBADD = @MODULES_LIBADD@
 srv_content_filtering_la_CFLAGS=
-srv_content_filtering_la_LDFLAGS=  -module -avoid-version
+srv_content_filtering_la_LDFLAGS=  -module -avoid-version @MODS_LDFLAGS@
 srv_content_filtering_la_SOURCES = srv_content_filtering.c srv_body.c filters.c profiles.c
 
 install-data-local:
