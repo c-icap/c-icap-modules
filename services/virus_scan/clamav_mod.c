@@ -144,7 +144,7 @@ void clamav_destroy_virusdb();
 void clamav_dbreload_command(const char *name, int type, const char **argv);
 int clamav_init(struct ci_server_conf *server_conf)
 {
-    register_command("clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
+    ci_command_register_ctl_cmd("clamav:dbreload", MONITOR_PROC_CMD | CHILDS_PROC_CMD,
                      clamav_dbreload_command);
     return CI_OK;
 }

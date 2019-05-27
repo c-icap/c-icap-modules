@@ -228,7 +228,7 @@ int virus_scan_post_init_service(ci_service_xdata_t *srv_xdata,
                            struct ci_server_conf *server_conf)
 {
     set_istag(virus_scan_xdata);
-    register_command_extend(AV_RELOAD_ISTAG, ONDEMAND_CMD, NULL, cmd_reload_istag);
+    ci_command_register_action(AV_RELOAD_ISTAG, ONDEMAND_CMD, NULL, cmd_reload_istag);
     return CI_OK;
 }
 

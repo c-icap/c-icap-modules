@@ -1375,8 +1375,8 @@ int cfg_load_sg_db(const char *directive, const char **argv, void *setdata)
     strncpy(db_data->path, argv[1], CI_MAX_PATH);
     db_data->path[CI_MAX_PATH-1] = '\0';
     db_data->ldb = ldb;
-    register_command_extend("open_sg_db", CHILD_START_CMD, db_data,
-			    command_open_sg_db);
+    ci_command_register_action("open_sg_db", CHILD_START_CMD, db_data,
+			       command_open_sg_db);
     return add_lookup_db(ldb);
   }
 
