@@ -10,7 +10,7 @@ do_subst=sed -e 's%[@]SYSCONFDIR[@]%$(CONFIGDIR)%g' \
 
 srv_url_check_la_LIBADD = @MODULES_LIBADD@
 srv_url_check_la_CFLAGS= 
-srv_url_check_la_LDFLAGS=  -module -avoid-version
+srv_url_check_la_LDFLAGS=  -module -avoid-version @MODS_LDFLAGS@
 srv_url_check_la_SOURCES = srv_url_check.c url_check_body.c request_filter.c
 
 manpages = c-icap-mods-sguardDB.8

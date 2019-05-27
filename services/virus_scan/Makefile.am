@@ -8,19 +8,19 @@ cicapmodule_LTLIBRARIES=virus_scan.la clamd_mod.la
 CONFS = virus_scan.conf clamd_mod.conf
 
 virus_scan_la_LIBADD = @MODULES_LIBADD@ 
-virus_scan_la_LDFLAGS =  -module -avoid-version
+virus_scan_la_LDFLAGS =  -module -avoid-version @MODS_LDFLAGS@
 virus_scan_la_CFLAGS =
 virus_scan_la_SOURCES = virus_scan.c virus_scan_vir.c av_body.c 
 
 clamd_mod_la_LIBADD = @MODULES_LIBADD@
-clamd_mod_la_LDFLAGS =  -module -avoid-version
+clamd_mod_la_LDFLAGS =  -module -avoid-version @MODS_LDFLAGS@
 clamd_mod_la_CFLAGS =
 clamd_mod_la_SOURCES = clamd_mod.c
 
 if USECLAMAV
 cicapmodule_LTLIBRARIES += clamav_mod.la
 clamav_mod_la_LIBADD = @MODULES_LIBADD@ @clamavlib@ -lclamav
-clamav_mod_la_LDFLAGS = -module -avoid-version
+clamav_mod_la_LDFLAGS = -module -avoid-version @MODS_LDFLAGS@
 clamav_mod_la_CFLAGS = @clamavinc@
 clamav_mod_la_SOURCES = clamav_mod.c
 CONFS += clamav_mod.conf
