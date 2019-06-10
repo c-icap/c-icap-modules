@@ -458,9 +458,10 @@ int cmp_replace_part_t_func(const void *obj1, const void *obj2, size_t user_data
     if (repl1_filter_data->header && !repl2_filter_data->header)
         return 1;
 
-    /*if one of two objects have header definition and header names are not the same then
+    /*if both of two objects have header definition and header names are not the same then
       they are not equal*/
-    if ((ret = strcmp(repl1_filter_data->header, repl2_filter_data->header)) != 0)
+    if (repl1_filter_data->header && repl2_filter_data->header &&
+        (ret = strcmp(repl1_filter_data->header, repl2_filter_data->header)) != 0)
         return ret;
 
     /*The tow objects refers to the same data, compare start of their segments*/
@@ -709,6 +710,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
         fd = malloc(sizeof(struct srv_cf_user_filter_data));
         if (!fd) {
             ci_debug_printf(1, "Error allocation memory, while parsing file '%s'!\n", file);
+            fclose(f);
             return 0;
         }
         fd->type = type;
@@ -726,6 +728,8 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
                 fd->score = strtol(s, &e, 10);
                 if (s == e) {
                     ci_debug_printf(1, "Error parsing file: %s, line %d: '%s'\n", file, lineNumber, s);
+                    free_srv_cf_user_filter_data(fd);
+                    fclose(f);
                     return 0;
                 }
             } else if (strncmp(s, "info{", 5) == 0) {
@@ -733,6 +737,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
                 if ((e = strchr(infoName, '}')) == NULL ||  *(e + 1) != '=') {
                     ci_debug_printf(1, "Error parsing file '%s', line %d,  Expecting info{InfoName}=InfoValue got '%s'\n", file, lineNumber, s);
                     free_srv_cf_user_filter_data(fd);
+                    fclose(f);
                     return 0;
                 }
                 *e = '\0';
@@ -741,6 +746,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
                 if (!e) {
                     ci_debug_printf(1, "Error parsing file '%s', line %d,  expecting regex expression at the end of line\n", file, lineNumber);
                     free_srv_cf_user_filter_data(fd);
+                    fclose(f);
                     return 0;
                 }
                 *e = '\0';
@@ -760,6 +766,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
         if (!fd->regex_compiled) {
             ci_debug_printf(1, "Error parsing file '%s', line %d,  regex expression: '%s'\n", file, lineNumber, fd->regex_str);
             free_srv_cf_user_filter_data(fd);
+            fclose(f);
             return 0;
         }
 
@@ -777,7 +784,7 @@ int loadRulesFromFile(srv_cf_user_filter_t *filter, const char *file, int type, 
 int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
 {
     int argc, i, type;
-    char *name, *tmp, *infoName, *infoVal;
+    char *name, *infoName, *infoVal;
     srv_cf_user_filter_t *filter;
     struct srv_cf_user_filter_data *fd = NULL;
     const char *rulesFromFile = NULL;
@@ -790,8 +797,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
     }
 
     name = strdup(argv[0]);
-    tmp = strdup(argv[1]);
-    char *typeParam = tmp;
+    char *typeParam = strdup(argv[1]);
     char *typeArg = NULL;
     char *e;
     if ((typeArg = strchr(typeParam, '{'))) {
@@ -813,22 +819,22 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
         type = UrlRegex;
     else {
         ci_debug_printf(1, "Expecting [body|header|request_header|url], got '%s'!\n", typeParam);
-        free(tmp);
+        free(typeParam);
         return 0;
     }
+    free(typeParam);
 
-    fd = malloc(sizeof(struct srv_cf_user_filter_data));
-    if (!fd) {
-        ci_debug_printf(1, "Error allocation memory!\n");
-        free(tmp);
-        return 0;
-    }
 
     if (strncasecmp(argv[2], "file:", 5) == 0) {
         rulesFromFile = argv[2] + 5;
     }
 
     if (!rulesFromFile) {
+        fd = malloc(sizeof(struct srv_cf_user_filter_data));
+        if (!fd) {
+            ci_debug_printf(1, "Error allocation memory!\n");
+            return 0;
+        }
         fd->type = type;
         fd->header = typeArg ? strdup(typeArg) : NULL;
         fd->regex_str = NULL;
@@ -838,8 +844,6 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
         fd->score = 0;
         fd->infoStrings = NULL;
 
-        /*Not Needed any more*/
-        free(tmp); tmp = NULL;
 
         if ((fd->regex_str = ci_regex_parse(argv[2], &fd->regex_flags, &fd->recursive))) {
             fd->regex_compiled = ci_regex_build(fd->regex_str, fd->regex_flags);
@@ -858,7 +862,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
                     fd->score = strtol((argv[i] + 6), NULL, 10);
                 } if (strncmp(argv[i], "info{", 5) == 0) {
                     ci_debug_printf(1, "Got: %s\n", argv[i]);
-                    tmp = strdup(argv[i]);
+                    char *tmp = strdup(argv[i]);
                     infoName = tmp + 5;
                     if ((e = strchr(tmp, '}')) == NULL ||  *(e + 1) != '=') {
                         ci_debug_printf(1, "srv_cf_cfg_match: parse error: Expecting info{InfoName}=InfoValue got '%s'\n", tmp);
@@ -894,8 +898,10 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
         free(name);
     }
 
-    if (rulesFromFile)
+    if (rulesFromFile) {
+        assert(!fd);
         return loadRulesFromFile(filter, rulesFromFile, type, typeArg);
+    }
 
     assert(fd);
 

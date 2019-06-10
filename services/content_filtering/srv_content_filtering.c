@@ -302,8 +302,8 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 {
     char tmpBuf[1024];
     ci_headers_list_t *heads = NULL;
-    srv_cf_results_t *result = NULL;
     struct srv_content_filtering_req_data *srv_content_filtering_data = ci_service_data(req);
+    srv_cf_results_t *result = &(srv_content_filtering_data->result);
 
     if (srv_content_filtering_data->abort) {
         /*We had already start sending data....*/
@@ -318,7 +318,6 @@ int srv_content_filtering_end_of_data_handler(ci_request_t * req)
 
     ci_membuf_t *decoded_data = srv_cf_body_decoded_membuf(&srv_content_filtering_data->body, srv_content_filtering_data->enMethod,  srv_content_filtering_data->maxBodyData);
     if (decoded_data) {
-        result = &(srv_content_filtering_data->result);
         /*
           Process data.....
           Assume the new data stored in body_data and they are of size body_data_len
@@ -412,7 +411,7 @@ int srv_content_filtering_io(char *wbuf, int *wlen, char *rbuf, int *rlen, int i
      if (wbuf && wlen) {
           *wlen = srv_cf_body_read(&srv_content_filtering_data->body, wbuf, *wlen);
      }
-     if(*wlen==0 && srv_content_filtering_data->eof==1)
+     if(wlen && *wlen == 0 && srv_content_filtering_data->eof == 1)
 	 *wlen = CI_EOF;
 
      return ret;
