@@ -828,7 +828,7 @@ void match_info_append_db(struct match_info *match_info, const char *db_name, co
     }
     if (!sub_cats) {
         /*strncat always put a '\0' at the end*/
-        strncat(match_info->matched_dbs + len, db_name, _MATCHDB_SZ-len);
+        strncat(match_info->matched_dbs + len, db_name, _MATCHDB_SZ- len - 1);
         match_info->last_subcat[0] = '\0';
     } else {
         snprintf(match_info->matched_dbs + len, _MATCHDB_SZ-len, "%s{%s}", db_name, sub_cats);
