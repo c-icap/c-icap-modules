@@ -428,7 +428,7 @@ static void clamd_set_versions()
 {
     char str_version[64];
     int cfg_version = 0;
-    unsigned int version, level;
+    unsigned int version = 0, level = 0;
 
     clamd_get_versions(&level, &version, str_version, sizeof(str_version));
 
