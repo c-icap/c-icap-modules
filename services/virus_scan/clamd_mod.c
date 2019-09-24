@@ -184,7 +184,7 @@ static int clamd_response(int fd, char *buf, size_t size)
 static int send_filename(int sockfd, const char *filename)
 {
     int len;
-    char *buf;
+    char buf[CI_MAX_PATH];
 
     if (! filename) {
         ci_debug_printf(1, "send_filename: Filename to be sent to clamd cannot be NULL!\n");
@@ -192,15 +192,14 @@ static int send_filename(int sockfd, const char *filename)
     }
     ci_debug_printf(5, "send_filename: File '%s' should be scanned.\n", filename);
 
-    len = strlen(filename) + strlen("zSCAN") + 2;
-    if (!(buf = malloc(len))) {
-        ci_debug_printf(1, "!Cannot allocate a command buffer: %s\n", strerror(errno));
+    len = snprintf(buf, sizeof(buf),  "zSCAN %s", filename);
+    if (len >= sizeof(buf)) {
+        ci_debug_printf(1, "Too long filename: %s\n", filename);
         return 0;
     }
-    sprintf(buf, "zSCAN %s", filename);
 
     ci_debug_printf(5, "send_filename: Send '%s' to clamd (len=%d)\n", buf, len);
-    if (clamd_command(sockfd, buf, len) <= 0) {
+    if (clamd_command(sockfd, buf, len + 1) <= 0) {
         return 0;
     }
 
