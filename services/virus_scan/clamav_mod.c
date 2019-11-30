@@ -106,8 +106,8 @@ extern ci_off_t CLAMAV_MAXFILESIZE;
 extern ci_off_t CLAMAV_MAXSCANSIZE;
 extern char *CLAMAV_TMP;
 
-#define CLAMAV_VERSION_SIZE 64
-static char CLAMAV_VERSION[CLAMAV_VERSION_SIZE];
+#define CLAMAVLIB_VERSION_SIZE 64
+static char CLAMAVLIB_VERSION[CLAMAVLIB_VERSION_SIZE];
 #define CLAMAV_SIGNATURE_SIZE SERVICE_ISTAG_SIZE + 1
 static char CLAMAV_SIGNATURE[CLAMAV_SIGNATURE_SIZE];
 
@@ -650,13 +650,13 @@ void clamav_set_versions()
     CLAMAV_SIGNATURE[CLAMAV_SIGNATURE_SIZE - 1] = '\0';
 
      /*set the clamav version*/
-     snprintf(CLAMAV_VERSION, CLAMAV_VERSION_SIZE - 1, "%s/%d", str_version, version);
-     CLAMAV_VERSION[CLAMAV_VERSION_SIZE - 1] = '\0';
+     snprintf(CLAMAVLIB_VERSION, CLAMAVLIB_VERSION_SIZE - 1, "%s/%d", str_version, version);
+     CLAMAVLIB_VERSION[CLAMAVLIB_VERSION_SIZE - 1] = '\0';
 }
 
 const char *clamav_version()
 {
-    return CLAMAV_VERSION;
+    return CLAMAVLIB_VERSION;
 }
 
 const char *clamav_signature()
