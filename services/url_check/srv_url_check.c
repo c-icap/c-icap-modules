@@ -671,7 +671,7 @@ static ci_membuf_t *build_error_page(ci_request_t *req)
     const char *lang;
     ci_membuf_t *err_page;
     ci_http_response_create(req, 1, 1); /*Build the responce headers */
-    ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
+    ci_http_response_add_header(req, "HTTP/1.1 403 Forbidden"); /*Send an 403 Forbidden http responce to web client */
     ci_http_response_add_header(req, "Server: C-ICAP");
     ci_http_response_add_header(req, "Content-Type: text/html");
     ci_http_response_add_header(req, "Connection: close");
@@ -689,6 +689,9 @@ static ci_membuf_t *build_error_page(ci_request_t *req)
     }
     else
         ci_http_response_add_header(req, "Content-Language: en");
+
+    snprintf(buf, sizeof(buf), "Content-Length: %d", ci_membuf_size(err_page));
+    ci_http_response_add_header(req, buf);
     return err_page;
 }
 

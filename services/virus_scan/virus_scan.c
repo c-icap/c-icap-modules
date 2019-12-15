@@ -1091,7 +1091,7 @@ void generate_error_page(av_req_data_t *data, ci_request_t *req)
           ci_http_response_reset_headers(req);
      else
           ci_http_response_create(req, 1, 1);
-     ci_http_response_add_header(req, "HTTP/1.0 403 Forbidden");
+     ci_http_response_add_header(req, "HTTP/1.1 403 Forbidden");
      ci_http_response_add_header(req, "Server: C-ICAP");
      ci_http_response_add_header(req, "Connection: close");
      ci_http_response_add_header(req, "Content-Type: text/html");
@@ -1102,11 +1102,12 @@ void generate_error_page(av_req_data_t *data, ci_request_t *req)
      lang = ci_membuf_attr_get(error_page, "lang");
      if (lang) {
          snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
-         buf[sizeof(buf)-1] = '\0';
          ci_http_response_add_header(req, buf);
      }
      else
          ci_http_response_add_header(req, "Content-Language: en");
+     snprintf(buf, sizeof(buf), "Content-Length: %d", ci_membuf_size(error_page));
+     ci_http_response_add_header(req, buf);
 
      data->error_page = error_page;
 }
