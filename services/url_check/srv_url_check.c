@@ -606,7 +606,7 @@ static void build_icap_reply_headers(ci_request_t *req)
      const struct profile *profile = uc->profile;
      const struct cfg_action *cfg_action = uc->cfg_action;
      int addDefaultXHeaders = 1;
-     char buf[1024];
+     char buf[1040];
 
      if (cfg_action && !cfg_action->defaultXHeaders)
           addDefaultXHeaders = 0;
