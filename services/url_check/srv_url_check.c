@@ -613,7 +613,6 @@ static void build_icap_reply_headers(ci_request_t *req)
 
      if (addDefaultXHeaders) {
           snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", profile->name);
-          buf[sizeof(buf)-1] = '\0';
           ci_icap_add_xheader(req, buf);
      }
 
@@ -621,26 +620,22 @@ static void build_icap_reply_headers(ci_request_t *req)
           ci_request_set_str_attribute(req,"url_check:matched_cat", uc->match_info.matched_dbs);
           if (addDefaultXHeaders) {
                snprintf(buf, sizeof(buf), "X-Attribute: %s", uc->match_info.matched_dbs);
-               buf[sizeof(buf)-1] = '\0';
                ci_icap_add_xheader(req, buf);
           }
      }
      if (uc->match_info.match_length && addDefaultXHeaders) {
           snprintf(buf, sizeof(buf), "X-Attribute-Prefix: %d", uc->match_info.match_length);
-          buf[sizeof(buf)-1] = '\0';
           ci_icap_add_xheader(req, buf);
      }
      if (uc->match_info.action != NULL) {
           ci_request_set_str_attribute(req,"url_check:action", uc->match_info.action->action_str);
           if (addDefaultXHeaders) {
                snprintf(buf, sizeof(buf), "X-Response-Info: %s", uc->match_info.action->action_str);
-               buf[sizeof(buf)-1] = '\0';
                ci_icap_add_xheader(req, buf);
           }
           if (uc->match_info.action_db[0] != '\0') {
               if (uc->match_info.last_subcat[0] != '\0') {
                    snprintf(buf, sizeof(buf), "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
-                   buf[sizeof(buf)-1] = '\0';
                    ci_request_set_str_attribute(req,"url_check:action_cat", buf);
                    ci_debug_printf(5, "srv_url_check: %s: %s{%s}, http url: %s\n",
                                    uc->match_info.action->action_str,
@@ -684,7 +679,6 @@ static ci_membuf_t *build_error_page(ci_request_t *req)
     lang = ci_membuf_attr_get(err_page, "lang");
     if (lang) {
         snprintf(buf, sizeof(buf), "Content-Language: %s", lang);
-        buf[sizeof(buf)-1] = '\0';
         ci_http_response_add_header(req, buf);
     }
     else
