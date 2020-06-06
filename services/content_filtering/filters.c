@@ -861,7 +861,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
                 if (strncmp(argv[i], "score=", 6) == 0) {
                     fd->score = strtol((argv[i] + 6), NULL, 10);
                 } if (strncmp(argv[i], "info{", 5) == 0) {
-                    ci_debug_printf(1, "Got: %s\n", argv[i]);
+                    ci_debug_printf(7, "Got: %s\n", argv[i]);
                     char *tmp = strdup(argv[i]);
                     infoName = tmp + 5;
                     if ((e = strchr(tmp, '}')) == NULL ||  *(e + 1) != '=') {
@@ -872,7 +872,7 @@ int srv_cf_cfg_match(const char *directive,const char **argv,void *setdata)
                     }
                     *e = '\0';
                     infoVal = e + 2;
-                    ci_debug_printf(1, "Got Name '%s', got value: '%s'\n", infoName, infoVal);
+                    ci_debug_printf(7, "Got Name '%s', got value: '%s'\n", infoName, infoVal);
                     if (!fd->infoStrings) {
                         fd->infoStrings = ci_str_array_new(1024);
                     }
