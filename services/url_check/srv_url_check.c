@@ -743,7 +743,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
              Allocate a new body for it
            */
           if (ci_req_hasbody(req)) {
-              if (ci_allow206(req)) {
+              if (ci_req_allow206(req)) {
                   ci_request_206_origin_body(req, 0);
                   return CI_MOD_ALLOW206;
               }
@@ -753,7 +753,7 @@ int url_check_check_preview(char *preview_data, int preview_data_len,
           }
      }
 
-     unlock_data(req);
+     ci_req_unlock_data(req);
      return CI_MOD_CONTINUE;
 }
 

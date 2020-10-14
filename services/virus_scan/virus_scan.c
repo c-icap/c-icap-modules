@@ -322,7 +322,7 @@ void *virus_scan_init_request_data(ci_request_t *req)
                ci_debug_printf(5, "service arguments:%s\n", req->args);
                virus_scan_parse_args(data, req->args);
           }
-          if (data->args.enable204 && ci_allow204(req))
+          if (data->args.enable204 && ci_req_allow204(req))
                data->allow204 = 1;
           else
                data->allow204 = 0;
