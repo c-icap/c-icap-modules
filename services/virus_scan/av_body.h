@@ -33,9 +33,9 @@ struct av_body_data {
     enum av_body_type type;
 };
 
-#define av_body_data_lock_all(bd) (void)((bd)->type == AV_BT_FILE && (ci_simple_file_lock_all((bd)->store.file)))
-#define av_body_data_unlock(bd, len) (void)((bd)->type == AV_BT_FILE && (ci_simple_file_unlock((bd)->store.file, len)))
-#define av_body_data_unlock_all(bd) (void)((bd)->type == AV_BT_FILE && (ci_simple_file_unlock_all((bd)->store.file)))
+#define av_body_data_lock_all(bd) { if ((bd)->type == AV_BT_FILE) ci_simple_file_lock_all((bd)->store.file); }
+#define av_body_data_unlock(bd, len) { if ((bd)->type == AV_BT_FILE) ci_simple_file_unlock((bd)->store.file, len); }
+#define av_body_data_unlock_all(bd) { if ((bd)->type == AV_BT_FILE) ci_simple_file_unlock_all((bd)->store.file); }
 #define av_body_data_size(bd) ((bd)->type == AV_BT_FILE ? (bd)->store.file->endpos : ((bd)->type == AV_BT_MEM ? (bd)->store.mem->endpos : 0))
 
 void av_body_data_new(struct av_body_data *bd, enum av_body_type type,  int size);
