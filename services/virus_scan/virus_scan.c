@@ -473,6 +473,11 @@ int virus_scan_read_from_net(char *buf, int len, int iseof, ci_request_t *req)
 
          if (init_body_data(req) == CI_ERROR)
              return CI_ERROR;
+
+         if (data->must_scanned == NO_SCAN) {
+             ci_req_unlock_data(req);
+             av_body_data_unlock_all(&(data->body));
+         }
      }
      assert(data->must_scanned != NO_DECISION);
 
