@@ -67,9 +67,9 @@ av_engine_t  clamd_engine = {
     clamd_version
 };
 
-#define CLAMD_VERSION_SIZE 64
+#define CLAMD_VERSION_SIZE 256
 static char CLAMD_VERSION[CLAMD_VERSION_SIZE];
-#define CLAMD_SIGNATURE_SIZE SERVICE_ISTAG_SIZE
+#define CLAMD_SIGNATURE_SIZE 256
 static char CLAMD_SIGNATURE[CLAMD_SIGNATURE_SIZE];
 static void clamd_set_versions();
 
@@ -603,7 +603,6 @@ int clamd_get_versions(unsigned int *level, unsigned int *version, char *str_ver
     }
 
     snprintf(str_version, str_version_len, "%d%d%d", v1,v2,v3);
-    str_version[str_version_len - 1] = '\0';
     *level = 0; /*We are not able to retrieve level*/
 
     ci_debug_printf(6, "clamd_get_versions: Succesfully parse response from clamd server: %s (version: %d, strversion: '%s')\n", response, *version, str_version);
@@ -725,11 +724,9 @@ static void clamd_set_versions()
     /*Set clamav signature*/
     snprintf(CLAMD_SIGNATURE, CLAMD_SIGNATURE_SIZE - 1, "-%.3d-%s-%u%u",
              cfg_version, str_version, level, version);
-    CLAMD_SIGNATURE[CLAMD_SIGNATURE_SIZE - 1] = '\0';
 
      /*set the clamav version*/
      snprintf(CLAMD_VERSION, CLAMD_VERSION_SIZE - 1, "%s/%d", str_version, version);
-     CLAMD_VERSION[CLAMD_VERSION_SIZE - 1] = '\0';
 }
 
 const char *clamd_version()
