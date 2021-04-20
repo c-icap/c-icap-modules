@@ -33,6 +33,7 @@ endif
 TMPLS = templates/en/VIR_MODE_HEAD templates/en/VIR_MODE_PROGRESS templates/en/VIR_MODE_TAIL templates/en/VIR_MODE_VIRUS_FOUND templates/en/VIRUS_FOUND
 
 install-data-local:
+	$(mkinstalldirs) $(DESTDIR)$(CONFIGDIR)
 	for f in $(CONFS); do \
 		$(INSTALL) $(srcdir)/$$f $(DESTDIR)$(CONFIGDIR)/$$f.default; \
 		if test ! -f $(DESTDIR)$(CONFIGDIR)/$$f; then $(INSTALL) $(srcdir)/$$f $(DESTDIR)$(CONFIGDIR)/$$f; fi \

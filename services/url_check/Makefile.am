@@ -39,6 +39,7 @@ if USEBDB
 endif
 
 install-data-local:
+	$(mkinstalldirs) $(DESTDIR)$(CONFIGDIR)
 	$(INSTALL) $(srcdir)/srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf.default
 	if test ! -f $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; then $(INSTALL) srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf; fi
 	$(mkinstalldirs) $(DESTDIR)$(cicapdatadir)/templates/srv_url_check/en
