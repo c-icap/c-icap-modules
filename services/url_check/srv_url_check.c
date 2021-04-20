@@ -16,6 +16,7 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#include "../../common.h"
 #include "c_icap/c-icap.h"
 #include "c_icap/service.h"
 #include "c_icap/header.h"
@@ -26,7 +27,6 @@
 #include "c_icap/access.h"
 #include "c_icap/acl.h"
 #include "c_icap/array.h"
-#include "../../common.h"
 #include "c_icap/commands.h"
 #include "c_icap/txt_format.h"
 #include "c_icap/txtTemplate.h"
