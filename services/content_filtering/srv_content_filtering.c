@@ -450,26 +450,23 @@ void generate_error_page(struct srv_content_filtering_req_data * data, ci_reques
 void add_xheaders(struct srv_content_filtering_req_data * data, ci_request_t * req)
 {
     char buf[1024];
-    char buf2[1024];
     if (data->profile) {
         snprintf(buf, sizeof(buf), "X-ICAP-Profile: %s", data->profile->name);
-        buf[sizeof(buf)-1] = '\0';
         ci_icap_add_xheader(req, buf);
     }
 
     if (data->result.scores) {
-        srv_cf_print_scores_list(data->result.scores, buf2, sizeof(buf2));
-        ci_request_set_str_attribute(req,"srv_content_filtering:scores", buf2);
-
-        snprintf(buf, sizeof(buf), "X-Attribute: %s", buf2);
-        buf[sizeof(buf)-1] = '\0';
+        const int x_attribute_headname_size = snprintf(buf, sizeof(buf), "X-Attribute: ");
+        char *x_attribute_val = buf + x_attribute_headname_size;
+        const int x_attribute_val_size = sizeof(buf) - x_attribute_headname_size;
+        srv_cf_print_scores_list(data->result.scores, x_attribute_val, x_attribute_val_size);
+        ci_request_set_str_attribute(req,"srv_content_filtering:scores", x_attribute_val);
         ci_icap_add_xheader(req, buf);
     }
 
     if (data->result.action) {
         ci_request_set_str_attribute(req,"srv_content_filtering:action", srv_cf_action_str(data->result.action->action));
         snprintf(buf, sizeof(buf), "X-Response-Info: %s", srv_cf_action_str(data->result.action->action));
-        buf[sizeof(buf)-1] = '\0';
         ci_icap_add_xheader(req, buf);
 
         ci_request_set_str_attribute(req, "srv_content_filtering:action_filter", data->result.action->matchingFilter->name);
