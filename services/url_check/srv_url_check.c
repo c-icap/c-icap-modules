@@ -36,6 +36,7 @@
 #endif
 #include "url_check_body.h"
 #include "request_filter.h"
+#include "htmlencode.h"
 
 /*Structs for this module */
 
@@ -1860,42 +1861,57 @@ static struct url_check_action *select_action(const char *action)
 int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
+    int protosz = strnlen(protos[uc->httpinf.proto], 16);
+    int pathsz = strnlen(uc->httpinf.url, 1024);
     /*Do notwrite more than 512 bytes*/
-    return snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uc->httpinf.url);
+    return snprintf(buf, (len < 512? len:512), "%s://%s", htmlspecialchars(protos[uc->httpinf.proto], protosz) , htmlspecialchars(uc->httpinf.url, pathsz));
 }
 
 int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
-    return snprintf(buf, len, "%s", uc->httpinf.host);
+    int strsz = strnlen(uc->httpinf.host, 1024);
+    return snprintf(buf, len, "%s", htmlspecialchars(uc->httpinf.host, strsz));
 }
 
 int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
-    return snprintf(buf, len, "%s", uc->match_info.matched_dbs);
+    int strsz = strnlen(uc->httpinf.host, 1024);
+    return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.matched_dbs, strsz));
 }
 
 int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
+    int dbsz = 0;
+    int subcatsz = 0;
+
     if (uc->match_info.action < 0)
         return 0;
-    if (uc->match_info.last_subcat[0] != '\0')
-        return snprintf(buf, len, "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
-    else
-        return snprintf(buf, len, "%s", uc->match_info.action_db);
+    dbsz = strnlen(uc->match_info.action_db, 256);
+    if (uc->match_info.last_subcat[0] != '\0') {
+        subcatsz = strnlen(uc->match_info.last_subcat, 256);
+        return snprintf(buf, len, "%s{%s}", htmlspecialchars(uc->match_info.action_db, dbsz), htmlspecialchars(uc->match_info.last_subcat, subcatsz));
+    } else {
+        return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.action_db, dbsz));
+    }
 }
 
 int fmt_srv_urlcheck_blocked_db_descr(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
+    int dbsz = 0;
+    int subcatsz = 0;
     if (uc->match_info.action < 0)
         return 0;
     if (uc->match_info.action_db_descr == NULL)
         return fmt_srv_urlcheck_blocked_db(req, buf, len, param);
-    if (uc->match_info.last_subcat[0] != '\0')
-        return snprintf(buf, len, "%s{%s}", uc->match_info.action_db_descr, uc->match_info.last_subcat);
-    else
-        return snprintf(buf, len, "%s", uc->match_info.action_db_descr);
+    dbsz = strnlen(uc->match_info.action_db_descr, 256);
+    if (uc->match_info.last_subcat[0] != '\0') {
+        subcatsz = strnlen(uc->match_info.last_subcat, 256);
+        return snprintf(buf, len, "%s{%s}", htmlspecialchars(uc->match_info.action_db_descr, dbsz), htmlspecialchars(uc->match_info.last_subcat, subcatsz));
+    } else {
+        return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.action_db_descr, dbsz));
+    }
 }
