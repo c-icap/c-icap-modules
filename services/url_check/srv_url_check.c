@@ -1860,58 +1860,98 @@ static struct url_check_action *select_action(const char *action)
 /* Formating table functions */
 int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    int protosz = strnlen(protos[uc->httpinf.proto], 16);
-    int pathsz = strnlen(uc->httpinf.url, 1024);
+    struct url_check_data *uc;
+    int retval, pathsz;
+    char *uri;
+
+    uc = ci_service_data(req);
+    pathsz = strnlen(uc->httpinf.url, 1024);
+    uri = htmlspecialchars(uc->httpinf.url, pathsz);
     /*Do notwrite more than 512 bytes*/
-    return snprintf(buf, (len < 512? len:512), "%s://%s", htmlspecialchars(protos[uc->httpinf.proto], protosz) , htmlspecialchars(uc->httpinf.url, pathsz));
+    retval =  snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uri));
+    if (uri)
+        free(uri);
+    return retval;
 }
 
 int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    int strsz = strnlen(uc->httpinf.host, 1024);
-    return snprintf(buf, len, "%s", htmlspecialchars(uc->httpinf.host, strsz));
+    struct url_check_data *uc;
+    char *host;
+    int retval, strsz;
+
+    uc = ci_service_data(req);
+    strsz = strnlen(uc->httpinf.host, 1024);
+    host = htmlspecialchars(uc->httpinf.host, strsz);
+    retval = snprintf(buf, len, "%s", host);
+    if (host)
+        free(host);
+    return retval;
 }
 
 int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    int strsz = strnlen(uc->httpinf.host, 1024);
-    return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.matched_dbs, strsz));
+    struct url_check_data *uc;
+    int retval, strsz;
+    char *dbs;
+
+    uc = ci_service_data(req);
+    strsz = strnlen(uc->httpinf.host, 1024);
+    dbs = htmlspecialchars(uc->match_info.matched_dbs, strsz);
+    retval = snprintf(buf, len, "%s", dbs);
+    if (dbs)
+        free(dbs);
+    return retval;
 }
 
 int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    int dbsz = 0;
-    int subcatsz = 0;
+    struct url_check_data *uc;
+    int retval, dbsz, catsz;
+    char *db, *cat;
 
+    uc = ci_service_data(req);
     if (uc->match_info.action < 0)
         return 0;
+
     dbsz = strnlen(uc->match_info.action_db, 256);
+    db = htmlspecialchars(uc->match_info.action_db, dbsz);
     if (uc->match_info.last_subcat[0] != '\0') {
-        subcatsz = strnlen(uc->match_info.last_subcat, 256);
-        return snprintf(buf, len, "%s{%s}", htmlspecialchars(uc->match_info.action_db, dbsz), htmlspecialchars(uc->match_info.last_subcat, subcatsz));
+        catsz = strnlen(uc->match_info.last_subcat, 256);
+        cat = htmlspecialchars(uc->match_info.last_subcat, catsz);
+        retval = snprintf(buf, len, "%s{%s}", db, cat);
+        if (cat)
+            free(cat);
     } else {
-        return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.action_db, dbsz));
+        retval = snprintf(buf, len, "%s", db);
     }
+    if (db)
+        free(db);
+    return retval;
 }
 
 int fmt_srv_urlcheck_blocked_db_descr(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
-    int dbsz = 0;
-    int subcatsz = 0;
+    int retval, dbsz, catsz;
+    char *db, *cat;
+
     if (uc->match_info.action < 0)
         return 0;
     if (uc->match_info.action_db_descr == NULL)
         return fmt_srv_urlcheck_blocked_db(req, buf, len, param);
     dbsz = strnlen(uc->match_info.action_db_descr, 256);
+    db = htmlspecialchars(uc->match_info.action_db_descr, dbsz);
     if (uc->match_info.last_subcat[0] != '\0') {
-        subcatsz = strnlen(uc->match_info.last_subcat, 256);
-        return snprintf(buf, len, "%s{%s}", htmlspecialchars(uc->match_info.action_db_descr, dbsz), htmlspecialchars(uc->match_info.last_subcat, subcatsz));
+        catsz = strnlen(uc->match_info.last_subcat, 256);
+        cat = htmlspecialchars(uc->match_info.last_subcat, catsz);
+        retval = snprintf(buf, len, "%s{%s}", db, cat);
+        if (cat)
+            free(cat);
     } else {
-        return snprintf(buf, len, "%s", htmlspecialchars(uc->match_info.action_db_descr, dbsz));
+        retval = snprintf(buf, len, "%s", db);
     }
+    if (db)
+        free(db);
+    return retval;
 }
