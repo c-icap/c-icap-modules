@@ -1868,7 +1868,7 @@ int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char 
     pathsz = strnlen(uc->httpinf.url, 1024);
     uri = htmlspecialchars(uc->httpinf.url, pathsz);
     /*Do notwrite more than 512 bytes*/
-    retval =  snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uri));
+    retval =  snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uri);
     if (uri)
         free(uri);
     return retval;
