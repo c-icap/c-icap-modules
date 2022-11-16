@@ -128,20 +128,12 @@ DB *sg_open_db(DB_ENV *dbenv, char *filename, enum sgDBopen otype,
     return dbp;
 }
 
-int SGDB_T_POOL = -1;
-
 sg_db_t *sg_init_db(const char *name, const char *home, enum sgDBopen otype)
 {
     sg_db_t *sg_db;
     char buf[256];
 
-    if(SGDB_T_POOL < 0 )
-	SGDB_T_POOL = ci_object_pool_register("sg_db_t", sizeof(sg_db_t));
-
-    if(SGDB_T_POOL < 0 )
-	return NULL;
-
-    sg_db = ci_object_pool_alloc(SGDB_T_POOL);
+    sg_db = (sg_db_t *)malloc(sizeof(sg_db_t));
     if(!sg_db)
 	return NULL;
 
@@ -154,7 +146,7 @@ sg_db_t *sg_init_db(const char *name, const char *home, enum sgDBopen otype)
 
     sg_db->env_db = db_setup(home);
     if(sg_db->env_db==NULL){
-	ci_object_pool_free(sg_db);
+	free(sg_db);
 	return NULL;
     }
 
@@ -163,7 +155,7 @@ sg_db_t *sg_init_db(const char *name, const char *home, enum sgDBopen otype)
 
     if(sg_db->domains_db == NULL && sg_db->urls_db== NULL) {
 	sg_close_db(sg_db);
-	ci_object_pool_free(sg_db);
+	free(sg_db);
 	return NULL;
     }
 
@@ -204,7 +196,7 @@ void sg_close_db(sg_db_t *sg_db)
     if(sg_db->db_home)
         free(sg_db->db_home);
 
-    ci_object_pool_free(sg_db);
+    free(sg_db);
 }
 
 int compdomainkey(char *dkey,char *domain,int dkey_len)
