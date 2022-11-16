@@ -705,9 +705,9 @@ int clamd_scan(ci_simple_file_t *body, av_virus_info_t *vinfo)
                     (sinfo.connection_status == 0 ? CLAMD_STAT_REUSED :CLAMD_STAT_CONN_FAILED));
 
     ci_stat_item_t stats[3] = {
-        {CI_STAT_INT64_T, connWhat, 1},
-        {CI_STAT_INT64_T, CLAMD_STAT_REQUESTS, 1},
-        {CI_STAT_INT64_T, CLAMD_STAT_SCAN_FAILED, (sinfo.err != NULL ? 1 : 0)},
+        {CI_STAT_INT64_T, connWhat, count : 1},
+        {CI_STAT_INT64_T, CLAMD_STAT_REQUESTS, count : 1},
+        {CI_STAT_INT64_T, CLAMD_STAT_SCAN_FAILED, count : (sinfo.err != NULL ? 1 : 0)},
     };
     ci_stat_update(stats, 3);
     return ret;
