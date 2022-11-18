@@ -11,7 +11,7 @@ do_subst=sed -e 's%[@]SYSCONFDIR[@]%$(CONFIGDIR)%g' \
 srv_url_check_la_LIBADD = @MODULES_LIBADD@
 srv_url_check_la_CFLAGS= 
 srv_url_check_la_LDFLAGS=  -module -avoid-version @MODS_LDFLAGS@
-srv_url_check_la_SOURCES = srv_url_check.c url_check_body.c request_filter.c
+srv_url_check_la_SOURCES = srv_url_check.c url_check_body.c request_filter.c sguardDB.c
 
 manpages = c-icap-mods-sguardDB.8
 manpages_src = $(manpages:.8=.8.in)
@@ -27,15 +27,20 @@ man_MANS = $(manpages)
 
 TMPLS = templates/en/DENY
 
+bin_PROGRAMS = c-icap-mods-sguardDB
+c_icap_mods_sguardDB_SOURCES =  sguardDB.c
+c_icap_mods_sguardDB_LDADD = @UTILITIES_LIBADD@
+c_icap_mods_sguardDB_CFLAGS = -DBUILD_SGUARD_TOOL
+
+
 if USEBDB
  srv_url_check_la_LIBADD += @BDB_ADD_LDADD@
  srv_url_check_la_CFLAGS += @BDB_ADD_FLAG@
- srv_url_check_la_SOURCES += sguardDB.c
+ srv_url_check_la_SOURCES += sguard_bdb.c
 
- bin_PROGRAMS = c-icap-mods-sguardDB
- c_icap_mods_sguardDB_SOURCES =  sguardDB.c
- c_icap_mods_sguardDB_LDADD = @UTILITIES_LIBADD@ @BDB_ADD_LDADD@
- c_icap_mods_sguardDB_CFLAGS = @BDB_ADD_FLAG@ -DBUILD_SGUARD_TOOL
+ c_icap_mods_sguardDB_SOURCES +=  sguard_bdb.c
+ c_icap_mods_sguardDB_LDADD += @BDB_ADD_LDADD@
+ c_icap_mods_sguardDB_CFLAGS += @BDB_ADD_FLAG@
 endif
 
 install-data-local:
