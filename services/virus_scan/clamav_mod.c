@@ -639,19 +639,17 @@ int clamav_get_versions(unsigned int *level, unsigned int *version, char *str_ve
 void clamav_set_versions()
 {
     char str_version[64];
-    int cfg_version = 0;
+    uint8_t cfg_version = 0;
     unsigned int version = 0, level = 0;
 
     clamav_get_versions(&level, &version, str_version, sizeof(str_version));
 
     /*Set clamav signature*/
-    snprintf(CLAMAV_SIGNATURE, CLAMAV_SIGNATURE_SIZE - 1, "-%.3d-%s-%u%u",
+    snprintf(CLAMAV_SIGNATURE, CLAMAV_SIGNATURE_SIZE, "-%.3hhu-%.12s-%u%u",
              cfg_version, str_version, level, version);
-    CLAMAV_SIGNATURE[CLAMAV_SIGNATURE_SIZE - 1] = '\0';
 
      /*set the clamav version*/
-     snprintf(CLAMAVLIB_VERSION, CLAMAVLIB_VERSION_SIZE - 1, "%s/%d", str_version, version);
-     CLAMAVLIB_VERSION[CLAMAVLIB_VERSION_SIZE - 1] = '\0';
+     snprintf(CLAMAVLIB_VERSION, CLAMAVLIB_VERSION_SIZE, "%.12s/%d", str_version, version);
 }
 
 const char *clamav_version()
