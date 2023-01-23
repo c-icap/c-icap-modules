@@ -303,6 +303,54 @@ if test a"$libdb" = "ayes"; then
     AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])
 fi
 
+###############
+# Detect LMDB library
+liblmdb="yes"
+liblmdbpath=""
+AC_ARG_WITH(lmdb,
+[  --with-lmdb        Where to find LMDB library ],
+[ case "$withval" in
+    yes)
+         liblmdb="yes"
+    ;;
+    no )
+         liblmdb="no"
+    ;;
+    * )
+        liblmdb="yes"
+        liblmdbpath=$withval
+    ;;
+  esac
+],
+)
+
+if test a"$liblmdb" != "ano"; then
+   #  Save old CFLAGS/LDFLAGS
+   OLDCFLAGS=$CFLAGS
+   OLDLDFLAGS=$LDFLAGS
+   OLDLIBS=$LIBS
+   if test "a$liblmdbpath" != "a"; then
+      CFLAGS="-I$liblmdbpath/include $CFLAGS"
+      LDFLAGS="-L$liblmdbpath/lib $LDFLAGS"
+   fi
+   AC_CHECK_LIB(lmdb, mdb_version, [liblmdb="yes"], [liblmdb="no"])
+   CFLAGS=$OLDCFLAGS
+   LDFLAGS=$OLDLDFLAGS
+   LIBS=$OLDLIBS
+fi
+
+if test a"$liblmdb" = "ayes"; then
+    AC_DEFINE(HAVE_LMDB, 1, [Define HAVE_LMDB if the LMDB library is installed])
+    if test "a$liblmdbpath" != "a"; then
+        LMDB_ADD_LDADD="-L$liblmdbpath/lib -llmdb"
+        LMDB_ADD_FLAG="-I$liblmdbpath/include"
+    else
+        LMDB_ADD_LDADD="-llmdb"
+    fi
+    AC_SUBST(LMDB_ADD_LDADD)
+    AC_SUBST(LMDB_ADD_FLAG)
+fi
+
 AC_MSG_CHECKING([if fds can send through unix sockets])
 AC_TRY_COMPILE(
        [
@@ -337,6 +385,7 @@ AC_DEFINE(HAVE_STRCASESTR,1,[Define HAVE_STRCASESTR if strcasestr exists])
 
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
+AM_CONDITIONAL(USELMDB,   [test a"$liblmdb" != ano])
 AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
 AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile])

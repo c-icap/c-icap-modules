@@ -43,6 +43,16 @@ if USEBDB
  c_icap_mods_sguardDB_CFLAGS += @BDB_ADD_FLAG@
 endif
 
+if USELMDB
+  srv_url_check_la_LIBADD += @LMDB_ADD_LDADD@
+  srv_url_check_la_CFLAGS += @LMDB_ADD_FLAG@
+  srv_url_check_la_SOURCES += sguard_lmdb.c
+
+  c_icap_mods_sguardDB_SOURCES +=  sguard_lmdb.c
+  c_icap_mods_sguardDB_LDADD += @LMDB_ADD_LDADD@
+  c_icap_mods_sguardDB_CFLAGS += @LMDB_ADD_FLAG@
+endif
+
 install-data-local:
 	$(mkinstalldirs) $(DESTDIR)$(CONFIGDIR)
 	$(INSTALL) $(srcdir)/srv_url_check.conf $(DESTDIR)$(CONFIGDIR)/srv_url_check.conf.default

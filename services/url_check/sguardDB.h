@@ -10,6 +10,8 @@ typedef struct sg_db_type {
     int (*entry_add)(void *data, sgQueryType type, char *entry);
     int (*entry_remove)(void *data, sgQueryType type, char *entry);
     int (*iterate)(void *data, sgQueryType type, int (*action)(const char *, int, const char *,int));
+    void (*start_modify)(void *data);
+    void (*stop_modify)(void *data);
     const char *name;
 } sg_db_type_t;
 

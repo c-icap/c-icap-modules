@@ -3,7 +3,7 @@
 #include "sguardDB.h"
 #include BDB_HEADER_PATH(db.h)
 
-int domainCompare (DB *dbp, const DBT *a, const DBT *b)
+static int domainCompare (DB *dbp, const DBT *a, const DBT *b)
 {
     const char *a1 , *b1;
     char ac1 , bc1;
@@ -51,6 +51,7 @@ static DB *open_db_bdb(DB_ENV *dbenv, char *filename, enum sgDBopen otype,
 {
     int ret;
     uint32_t flags;
+    int mode;
     DB *dbp = NULL;
     if ((ret = db_create(&dbp, dbenv , 0)) != 0) {
         ci_debug_printf(1, "db_create: %s\n", db_strerror(ret));
@@ -59,12 +60,15 @@ static DB *open_db_bdb(DB_ENV *dbenv, char *filename, enum sgDBopen otype,
     if (bt_compare_fcn)
         dbp->set_bt_compare(dbp, bt_compare_fcn);
 
-    if (otype == sgDBreadonly)
+    if (otype == sgDBreadonly) {
         flags = DB_RDONLY | DB_THREAD;
-    else
+        mode = 0;
+    } else {
         flags = DB_CREATE | DB_THREAD;
+        mode = 0664;
+    }
 
-    if ((ret = dbp->open( dbp, NULL, filename, NULL, DB_BTREE, flags, 0)) != 0) {
+    if ((ret = dbp->open( dbp, NULL, filename, NULL, DB_BTREE, flags, mode)) != 0) {
         ci_debug_printf(1, "open db %s: %s\n", filename, db_strerror(ret));
         dbp->close(dbp, 0);
         return NULL;
@@ -254,5 +258,7 @@ sg_db_type_t BDB_TYPE = {
     sg_entry_add_bdb,
     sg_entry_remove_bdb,
     sg_iterate_bdb,
+    NULL,
+    NULL,
     "sg_bdb"
 };

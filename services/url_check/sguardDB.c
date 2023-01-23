@@ -7,15 +7,51 @@
 #endif
 #include "sguardDB.h"
 
+#if defined(HAVE_BDB)
 extern sg_db_type_t BDB_TYPE;
+#endif
+#if defined(HAVE_LMDB)
+extern sg_db_type_t LMDB_TYPE;
+#endif
+sg_db_type_t *ForceType = NULL;
 
 const sg_db_type_t *db_type_to_use(const char *db_path)
 {
+    struct stat file;
+    char dbFile[CI_MAX_PATH];
+#if defined(HAVE_LMDB)
+    snprintf(dbFile, sizeof(dbFile), "%s/data.mdb", db_path);
+    if (stat(dbFile, &file) == 0) /*Looks like an LMDB database*/
+        return &LMDB_TYPE;
+#endif
+#if defined(HAVE_BDB)
+    int isBDB = 0;
+    snprintf(dbFile, sizeof(dbFile), "%s/domains.db", db_path);
+    if (stat(dbFile, &file) == 0) /*Squard with Berkeley DB database*/
+        isBDB = 1;
+    else {
+        snprintf(dbFile, sizeof(dbFile), "%s/urls.db", db_path);
+        if (stat(dbFile, &file) == 0) /*Squard with Berkeley DB with only urls database*/
+            isBDB = 1;
+    }
+    if (isBDB)
+        return &BDB_TYPE;
+#endif
+
+    /*There is not existing database, maybe we are going to build a new one.
+      By default prefer to use an lmdb database.
+     */
+
+    if (ForceType)
+        return ForceType;
+
+#if defined(HAVE_LMDB)
+    return &LMDB_TYPE;
+#endif
 #if defined(HAVE_BDB)
     return &BDB_TYPE;
-#else
-    return NULL;
 #endif
+    return NULL;
 }
 
 sg_db_t *sg_init_db(const char *name, const char *home, enum sgDBopen otype)
@@ -183,10 +219,13 @@ static int db_update_from_file(sg_db_t *db, const char *file, int mode, int type
     if (!db->data || !db->db_type)
         return 0;
 
+    ci_debug_printf(4, "sguard/db_update_from_file: going to update from '%s'\n", file);
     if ((f = fopen(file, "r+")) == NULL) {
         ci_debug_printf(1, "Error opening file: %s\n", file);
         return 0;
     }
+    if (db->db_type->start_modify)
+        db->db_type->start_modify(db->data);
     while(!feof(f)) {
         buffer[0] =' ';
 
@@ -217,6 +256,8 @@ static int db_update_from_file(sg_db_t *db, const char *file, int mode, int type
                 db->db_type->entry_add(db->data, type, s);
         }
     }
+    if (db->db_type->start_modify)
+        db->db_type->stop_modify(db->data);
     fclose(f);
     return 1;
 }
@@ -294,10 +335,12 @@ int print_url(const char *key, int keysize, const char *data, int datasize)
 int dbDump( sg_db_t *l_db, const char *fname)
 {
     int onlydomains = 0, onlyurls = 0;
-    if (strcmp(fname, "urls") == 0)
-        onlyurls = 1;
-    else if (strcmp(fname, "domains") == 0)
-        onlydomains = 1;
+    if (fname) {
+        if (strcmp(fname, "urls") == 0)
+            onlyurls = 1;
+        else if (strcmp(fname, "domains") == 0)
+            onlydomains = 1;
+    }
 
     if (!onlyurls) {
         printf("DOMAINS:\n");
@@ -311,6 +354,25 @@ int dbDump( sg_db_t *l_db, const char *fname)
     return 0;
 }
 
+static int cfg_select_dbtype(const char *directive, const char **argv, void *setdata)
+{
+    if (argv == NULL || argv[0] == NULL) {
+        return 0;
+    }
+#if defined(HAVE_BDB)
+    if (strcasecmp(argv[0], "bdb") == 0) {
+        ForceType= &BDB_TYPE;
+        return 1;
+    }
+#endif
+#if defined(HAVE_LMDB)
+    if (strcasecmp(argv[0], "lmdb") == 0) {
+        ForceType= &LMDB_TYPE;
+        return 1;
+    }
+#endif
+    return 0;
+}
 
 void log_errors(void *unused, const char *format, ...)
 {
@@ -328,12 +390,18 @@ void vlog_errors(void *unused, const char *format, va_list ap)
 char *sgDB = NULL;
 char *sgDBFILE = NULL;
 char *URL = NULL;
+int HELP_MODE = 0;
 int DUMP_MODE = 0;
 int CREATE_MODE = 0;
 int UPDATE_MODE = 0;
 int SEARCH_MODE = 0;
+#if defined(HAVE_LMDB)
+extern size_t MAX_LMDB_SIZE;
+long int CFG_SET_MAX_LMDB_SIZE = 0;
+#endif
 
 static struct ci_options_entry options[] = {
+    {"-h", NULL, &HELP_MODE, ci_cfg_enable, "Show this help"},
     {"-d", "debug_level", &CI_DEBUG_LEVEL, ci_cfg_set_int,
      "The debug level"},
     {"-db", "dbpath", &sgDB, ci_cfg_set_str,
@@ -342,6 +410,15 @@ static struct ci_options_entry options[] = {
      "Select database table to operate, \"urls\" or \"domains\" table"},
     {"-C", NULL, &CREATE_MODE, ci_cfg_enable,
      "Create the database"},
+    {"-T", "bdb|lmdb", NULL, cfg_select_dbtype,
+     "Force BerkeleyDB or LMDB database type when building new database"
+    },
+#if defined(HAVE_LMDB)
+    {
+        "-S", "max-size", &CFG_SET_MAX_LMDB_SIZE, ci_cfg_size_long,
+        "Sets the maximum database size. For LMDB databases only."
+    },
+#endif
     {"-u", NULL, &UPDATE_MODE, ci_cfg_enable,
      "Update the database from diff files"},
     {"-s", "url", &URL, ci_cfg_set_str,
@@ -361,22 +438,30 @@ int main(int argc, char *argv[])
 #else
     __vlog_error = vlog_errors;        /*set c-icap library  log function for win32..... */
 #endif
+    ci_mem_init();
     ci_cfg_lib_init();
 
-    if (!ci_args_apply(argc, argv, options) || !sgDB) {
-        if (!sgDB)
-            ci_debug_printf(1, "\nThe \"-db\" argument required\n\n");
+    if (!ci_args_apply(argc, argv, options) || HELP_MODE) {
         ci_args_usage(argv[0], options);
         exit(-1);
     }
+
+#if defined(HAVE_LMDB)
+    if (CFG_SET_MAX_LMDB_SIZE)
+        MAX_LMDB_SIZE = CFG_SET_MAX_LMDB_SIZE;
+#endif
 
     if (URL)
         SEARCH_MODE = 1;
 
     modes = DUMP_MODE + UPDATE_MODE + CREATE_MODE + SEARCH_MODE;
     if (modes != 1) {
-        ci_debug_printf(1, "\n\n%s one from the \"-C\", \"-u\", \"-s\" or \"--dump\" arguments must be specified\n\n", modes == 0? "At least" : "Only");
-        ci_args_usage(argv[0], options);
+        ci_debug_printf(1, "\n%s one from the \"-C\", \"-u\", \"-s\" or \"--dump\" arguments must be specified.\nUse -h to see your options\n", modes == 0? "At least" : "Only");
+        exit(-1);
+    }
+
+    if (!sgDB && ! HELP_MODE) {
+        ci_debug_printf(1, "\nThe \"-db\" argument is required. Use -h to see your options\n");
         exit(-1);
     }
 
@@ -390,6 +475,10 @@ int main(int argc, char *argv[])
 
     /*Open Database to operate on*/
     l_db=sg_init_db("LocalName", sgDB, 0);
+    if (!l_db) {
+        ci_debug_printf(1, "Can not open database: %s\n", sgDB);
+        exit(-1);
+    }
 
     ret = 0;
     if(SEARCH_MODE) {
