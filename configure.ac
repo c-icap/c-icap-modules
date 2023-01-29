@@ -303,7 +303,6 @@ if test a"$libdb" = "ayes"; then
     AC_DEFINE(HAVE_BDB, 1, [Define HAVE_BDB if berkeley DB is installed])
 fi
 
-###############
 # Detect LMDB library
 liblmdb="yes"
 liblmdbpath=""
@@ -351,6 +350,52 @@ if test a"$liblmdb" = "ayes"; then
     AC_SUBST(LMDB_ADD_FLAG)
 fi
 
+# Detect tokyocabinet library
+libtokyocabinet="yes"
+libtokyocabinetpath=""
+AC_ARG_WITH(tokyocabinet,
+[  --with-tokyocabinet        Where to find tokyocabinet library ],
+[ case "$withval" in
+    yes)
+         libtokyocabinet="yes"
+    ;;
+    no )
+         libtokyocabinet="no"
+    ;;
+    * )
+        libtokyocabinet="yes"
+        libtokyocabinetpath=$withval
+    ;;
+    esac
+],
+)
+
+if test a"$libtokyocabinet" != "ano"; then
+   #  Save old CFLAGS/LDFLAGS
+   OLDCFLAGS=$CFLAGS
+   OLDLDFLAGS=$LDFLAGS
+   OLDLIBS=$LIBS
+   if test "a$libtokyocabinetpath" != "a"; then
+      CFLAGS="-I$libtokyocabinetpath/include $CFLAGS"
+      LDFLAGS="-L$libtokyocabinetpath/lib $LDFLAGS"
+   fi
+   AC_CHECK_LIB(tokyocabinet, tcbdbopen, [libtokyocabinet="yes"], [libtokyocabinet="no"])
+   CFLAGS=$OLDCFLAGS
+   LDFLAGS=$OLDLDFLAGS
+   LIBS=$OLDLIBS
+   if test a"$libtokyocabinet" = "ayes"; then
+      AC_DEFINE(HAVE_TOKYOCABINET, 1, [Define HAVE_TOKYOCABINET if the tokyocabinet library is installed])
+      if test "a$libtokyocabinetpath" != "a"; then
+         TOKYOCABINET_ADD_LDADD="-L$libtokyocabinetpath/lib -ltokyocabinet"
+         TOKYOCABINET_ADD_FLAG="-I$libtokyocabinetpath/include"
+      else
+         TOKYOCABINET_ADD_LDADD="-ltokyocabinet"
+      fi
+      AC_SUBST(TOKYOCABINET_ADD_LDADD)
+      AC_SUBST(TOKYOCABINET_ADD_FLAG)
+   fi
+fi
+
 AC_MSG_CHECKING([if fds can send through unix sockets])
 AC_TRY_COMPILE(
        [
@@ -386,9 +431,10 @@ AC_DEFINE(HAVE_STRCASESTR,1,[Define HAVE_STRCASESTR if strcasestr exists])
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
 AM_CONDITIONAL(USELMDB,   [test a"$liblmdb" != ano])
+AM_CONDITIONAL(USETOKYOCABINET,   [test a"$libtokyocabinet" != ano])
 AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
-AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile])
+AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile doc/Makefile doc/man/Makefile])
 
 if test a"$virus_scan_profiles_support" != a"no"; then
 echo -e "\n"\
