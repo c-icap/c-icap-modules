@@ -1,10 +1,25 @@
+ACLOCAL_AMFLAGS = -I m4
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include
+if USECXX_CODE
+AM_CXXFLAGS = -std=c++11 $(CFLAGS)
+endif
 CONFIGDIR = @CONFDIR@
 cicapdatadir=@DATADIR@
 cicapmoduledir=@MODSDIR@
 
 bin_PROGRAMS =
 pkglib_LTLIBRARIES=
+
+if USECXX_CODE
+if USEHIREDIS
+pkglib_LTLIBRARIES += redis.la
+
+redis_la_SOURCES = redis.cc
+redis_la_CXXFLAGS = $(AM_CXXFLAGS) @HIREDIS_CXXFLAGS@
+redis_la_LIBADD = @MODULES_LIBADD@ @HIREDIS_LIBADD@
+redis_la_LDFLAGS = -module -avoid-version
+endif
+endif
 
 if USETOKYOCABINET
 pkglib_LTLIBRARIES += tc_tables.la

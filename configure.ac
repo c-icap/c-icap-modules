@@ -15,6 +15,8 @@ AC_USE_SYSTEM_EXTENSIONS
 
 AC_PROG_CC
 AM_PROG_CC_C_O
+AC_PROG_CXX
+
 AC_C_BIGENDIAN
 
 AC_DISABLE_STATIC
@@ -396,6 +398,53 @@ if test a"$libtokyocabinet" != "ano"; then
    fi
 fi
 
+# hiredis library
+hiredis="yes"
+hiredispath=""
+AC_ARG_WITH(hiredis,
+[  --with-hiredis       Where to find hiredis library ],
+[ case "$withval" in
+  yes)
+        hiredis="yes"
+  ;;
+  no)
+        hiredis="no"
+  ;;
+  *)
+        hiredis="yes"
+        hiredispath = $withval
+  ;;
+  esac
+],
+)
+
+if test "a$hiredis" = "ayes"; then
+   OLDCFLAGS=$CFLAGS
+   OLDLDFLAGS=$LDFLAGS
+   OLDLIBS=$LIBS
+   if test "a$hiredispath" != "a"; then
+      CFLAGS="-I$hiredispath/include $CFLAGS"
+      LDFLAGS="-L$lhiredispath/lib $LDFLAGS"
+   fi
+   AC_CHECK_LIB(hiredis, redisConnect, [hiredis="yes"], [hiredis="no"])
+   CFLAGS=$OLDCFLAGS
+   LDFLAGS=$OLDLDFLAGS
+   LIBS=$OLDLIBS
+fi
+
+if test "a$hiredis" = "ayes"; then
+   AC_DEFINE(USE_HIREDIS, 1, [Define USE_HIREDIS to include support for HIREDIS])
+   if test "a$hiredispath" = "a"; then
+      HIREDIS_CXXFLAGS=""
+      HIREDIS_LIBADD=" -lhiredis"
+   else
+      HIREDIS_CXXFLAGS=-I"$hiredispath"/include
+      HIREDIS_LIBADD="-L$hiredispath/lib -Wl,-rpath -Wl,$hiredispath/lib -lhiredis"
+   fi
+   AC_SUBST(HIREDIS_CXXFLAGS)
+   AC_SUBST(HIREDIS_LIBADD)
+fi
+
 AC_MSG_CHECKING([if fds can send through unix sockets])
 AC_TRY_COMPILE(
        [
@@ -427,10 +476,11 @@ AC_DEFINE(HAVE_STRCASESTR,1,[Define HAVE_STRCASESTR if strcasestr exists])
 )
 
 # Now determine which modules will going to build .....
-
+AM_CONDITIONAL(USECXX_CODE,   [test a"$CXX" != a])
 AM_CONDITIONAL(USECLAMAV,[test a"$clamav" != ano])
 AM_CONDITIONAL(USEBDB,   [test a"$libdb" != ano])
 AM_CONDITIONAL(USELMDB,   [test a"$liblmdb" != ano])
+AM_CONDITIONAL(USEHIREDIS,   [test a"$hiredis" != ano])
 AM_CONDITIONAL(USETOKYOCABINET,   [test a"$libtokyocabinet" != ano])
 AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
