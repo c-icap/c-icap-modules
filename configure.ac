@@ -5,7 +5,7 @@ AC_INIT(c_icap_modules,m4_normalize(m4_include([VERSION.m4])))
 #AC_INIT(c_icap_modules, 0.3.2)
 
 AM_MAINTAINER_MODE
-AM_CONFIG_HEADER(autoconf.h)
+AC_CONFIG_HEADER(autoconf.h)
 
 AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_MACRO_DIR([m4])
@@ -16,13 +16,13 @@ AC_USE_SYSTEM_EXTENSIONS
 AC_PROG_CC
 AM_PROG_CC_C_O
 AC_PROG_CXX
+AM_PROG_AR
 
 AC_C_BIGENDIAN
 
 AC_DISABLE_STATIC
-AC_LIBTOOL_DLOPEN
-AC_LIBTOOL_WIN32_DLL
-AC_PROG_LIBTOOL
+LT_INIT(dlopen, win32-dll)
+AC_SUBST(LIBTOOL_DEPS)
 AC_SUBST(LIBTOOL_DEPS)
 
 case "$host_os" in
@@ -172,20 +172,35 @@ if test a"$clamav" = "ayes"; then
     OLD_CFLAGS=$CFLAGS
     CFLAGS=$clamavinc
     AC_MSG_CHECKING([for clamav 0.90.x or newer])
-    AC_TRY_COMPILE(
-    [#include <clamav.h>],
-    [struct cl_engine node; node.refcount=1;],
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+    [
+    #include <clamav.h>
+    int main(int argc, char *argv[])
+    {
+      struct cl_engine node; node.refcount=1;
+     }
+     ])],
+    [
     AC_DEFINE(HAVE_LIBCLAMAV_09X,1,[Define HAVE_LIBCLAMAV_09X if have clamav 0.90.x or newer])
-    AC_MSG_RESULT(yes),
+    AC_MSG_RESULT(yes)
+    ],
     AC_MSG_RESULT(no),
     )
 
     AC_MSG_CHECKING([for maxratio field in cl_limits struct])
-    AC_TRY_COMPILE(
-    [#include <clamav.h>],
-    [struct cl_limits limits; limits.maxratio=200;],
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+    [
+    #include <clamav.h>
+    int main(int argc, cgar *argv[])
+    {
+      struct cl_limits limits;
+      limits.maxratio=200;
+    }
+    ])],
+    [
     AC_DEFINE(HAVE_LIBCLAMAV_LIMITS_MAXRATIO,1,[Define HAVE_LIBCLAMAV_LIMITS_MAXRATIO if has cl_limits.maxratio])
-    AC_MSG_RESULT(yes),
+    AC_MSG_RESULT(yes)
+    ],
     AC_MSG_RESULT(no),
     )
 
@@ -193,12 +208,19 @@ if test a"$clamav" = "ayes"; then
     # clamav drop the cl_limits struct at version 0.95. I think it is
     # a good check for clamav lib version.
     AC_MSG_CHECKING([for clamav 0.95 or newer])
-    AC_TRY_COMPILE(
-    [#include <clamav.h>],
-    [struct cl_limits limist;],
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+    [
+    #include <clamav.h>
+    int main(int argc, char *argv[])
+    {
+       struct cl_limits limits;
+    }
+    ])],
     AC_MSG_RESULT(no),
+    [
     AC_DEFINE(HAVE_LIBCLAMAV_095,1,[Define HAVE_LIBCLAMAV_095 if have clamav 0.95.x or newer])
-    AC_MSG_RESULT(yes),
+    AC_MSG_RESULT(yes)
+    ]
     )
 
     #
@@ -206,11 +228,18 @@ if test a"$clamav" = "ayes"; then
     # CL_SCAN_HEURISTIC_ENCRYPTED_ARCHIVE and CL_SCAN_HEURISTIC_ENCRYPTED_DOC
     # restore flags  / clamav tests
     AC_MSG_CHECKING([for HAVE_CL_SCAN_OPTIONS in clamav.h])
-    AC_TRY_COMPILE(
-    [#include <clamav.h>],
-    [struct cl_scan_options CLAMSCAN_OPTIONS = { 0, 0, 0, 0, 0 };],
+    AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+    [
+    #include <clamav.h>
+    int main(int argc, char *argv[])
+    {
+       struct cl_scan_options CLAMSCAN_OPTIONS = { 0, 0, 0, 0, 0 };
+    }
+    ])],
+    [
     AC_DEFINE(HAVE_CL_SCAN_OPTIONS,1,[Define HAVE_CL_SCAN_OPTIONS if have clamav 0.101.x or newer])
-    AC_MSG_RESULT(yes),
+    AC_MSG_RESULT(yes)
+    ],
     AC_MSG_RESULT(no),
     )
     CFLAGS=$OLD_CFLAGS
@@ -446,13 +475,12 @@ if test "a$hiredis" = "ayes"; then
 fi
 
 AC_MSG_CHECKING([if fds can send through unix sockets])
-AC_TRY_COMPILE(
-       [
+AC_COMPILE_IFELSE([AC_LANG_SOURCE(
+      [
       #include <stdlib.h>
       #include <sys/socket.h>
       #include <sys/un.h>
-       ],
-      [
+
       int main(int argc, char **argv) {
              struct msghdr mh;
              struct cmsghdr cmh;
@@ -461,10 +489,12 @@ AC_TRY_COMPILE(
              cmh.cmsg_level = SOL_SOCKET;
              cmh.cmsg_type = SCM_RIGHTS;
       }
+      ])],
+      [
+      AC_DEFINE(HAVE_FD_PASSING,1,[Define HAVE_FD_PASSING if sending fd through unix socket supported])
+      AC_MSG_RESULT(yes)
       ],
-AC_DEFINE(HAVE_FD_PASSING,1,[Define HAVE_FD_PASSING if sending fd through unix socket supported])
-AC_MSG_RESULT(yes),
-AC_MSG_RESULT(no),
+      AC_MSG_RESULT(no),
 )
 
 # Check for header files
@@ -484,7 +514,8 @@ AM_CONDITIONAL(USEHIREDIS,   [test a"$hiredis" != ano])
 AM_CONDITIONAL(USETOKYOCABINET,   [test a"$libtokyocabinet" != ano])
 AM_CONDITIONAL(USE_VSCAN_PROFILES,[test a"$virus_scan_profiles_support" != a"no"])
 
-AC_OUTPUT([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile doc/Makefile doc/man/Makefile])
+AC_CONFIG_FILES([Makefile services/Makefile services/virus_scan/Makefile services/url_check/Makefile services/content_filtering/Makefile modules/Makefile doc/Makefile doc/man/Makefile])
+AC_OUTPUT
 
 if test a"$virus_scan_profiles_support" != a"no"; then
 echo -e "\n"\
