@@ -1009,7 +1009,7 @@ int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len)
    The caller is responsible to pass a valid file_type value
 */
      int type, i;
-     int *file_groups;
+     const int *file_groups;
      int file_type;
      const struct av_file_types *configured_file_types = NULL;
      av_req_data_t *data  = ci_service_data(req);;
@@ -1043,7 +1043,11 @@ int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len)
           */
      }
      else { /*We have a valid filetype*/
+#if defined(HAVE_CICAP_CI_MAGIC_TYPE_GROUPS)
+         file_groups = ci_magic_type_groups(file_type);
+#else
          file_groups = ci_data_type_groups(magic_db, file_type);
+#endif
          i = 0;
          if (file_groups) {
              while ( i < MAX_GROUPS && file_groups[i] >= 0) {
@@ -1244,12 +1248,19 @@ int cfg_ScanFileTypes(const char *directive, const char **argv, void *setdata)
           return 0;
 
      for (i = 0; argv[i] != NULL; i++) {
-          if ((id = ci_get_data_type_id(magic_db, argv[i])) >= 0)
-               ftypes->scantypes[id] = type;
-          else if ((id = ci_get_data_group_id(magic_db, argv[i])) >= 0)
-               ftypes->scangroups[id] = type;
-          else
-               ci_debug_printf(1, "Unknown data type %s \n", argv[i]);
+#if defined(HAVE_CICAP_CI_MAGIC_TYPE_ID)
+         if ((id = ci_magic_type_id(argv[i])) >= 0)
+             ftypes->scantypes[id] = type;
+         else if ((id = ci_magic_group_id(argv[i])) >= 0)
+             ftypes->scangroups[id] = type;
+#else
+         if ((id = ci_get_data_type_id(magic_db, argv[i])) >= 0)
+             ftypes->scantypes[id] = type;
+         else if ((id = ci_get_data_group_id(magic_db, argv[i])) >= 0)
+             ftypes->scangroups[id] = type;
+#endif
+         else
+             ci_debug_printf(1, "Unknown data type %s \n", argv[i]);
 
      }
 

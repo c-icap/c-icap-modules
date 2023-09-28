@@ -102,6 +102,9 @@ LIBS="$LIBS $cicapliblibs"
 AC_CHECK_LIB(icapapi, ci_brinflate_to_simple_file, [cicap_brotli='yes';AC_DEFINE(HAVE_CICAP_BROTLI, 1,Define HAVE_CICAP_BROTLI if c-icap supports brotli)], [cicap_brotli='no'])
 AC_CHECK_LIB(icapapi, ci_decompress_to_simple_file, [cicap_decompress_to='yes';AC_DEFINE(HAVE_CICAP_DECOMPRESS_TO, 1,Define HAVE_CICAP_DECOMPRESS_TO if c-icap has ci_decompress_to_ family functions)], [cicap_decompress_to='no'])
 AC_CHECK_LIB(icapapi, ci_decompress_error, [cicap_decompress_error='yes';AC_DEFINE(HAVE_CICAP_DECOMPRESS_ERROR, 1,Define HAVE_CICAP_DECOMPRESS_ERROR if c-icap has ci_decompress_error function)], [cicap_decompress_error='no'])
+AC_CHECK_LIB(icapapi, ci_magic_type_groups, [cicap_ci_magic_type_groups='yes';AC_DEFINE(HAVE_CICAP_CI_MAGIC_TYPE_GROUPS, 1,Define HAVE_CICAP_CI_MAGIC_TYPE_GROUPS if c-icap has ci_magic_type_groups)], [cicap_ci_magic_type_groups='no'])
+
+AC_CHECK_LIB(icapapi, ci_magic_type_id, [cicap_ci_magic_type_id='yes';AC_DEFINE(HAVE_CICAP_CI_MAGIC_TYPE_ID, 1,Define HAVE_CICAP_CI_MAGIC_TYPE_ID if c-icap has ci_magic_type_id)], [cicap_ci_magic_type_id='no'])
 LIBS=$OLD_LIBS
 
 # Checks for libraries
