@@ -36,6 +36,7 @@
 #endif
 #include "url_check_body.h"
 #include "request_filter.h"
+#include "htmlencode.h"
 
 /*Structs for this module */
 
@@ -1859,43 +1860,98 @@ static struct url_check_action *select_action(const char *action)
 /* Formating table functions */
 int fmt_srv_urlcheck_http_url(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
+    struct url_check_data *uc;
+    int retval, pathsz;
+    char *uri;
+
+    uc = ci_service_data(req);
+    pathsz = strnlen(uc->httpinf.url, 1024);
+    uri = htmlspecialchars(uc->httpinf.url, pathsz);
     /*Do notwrite more than 512 bytes*/
-    return snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uc->httpinf.url);
+    retval =  snprintf(buf, (len < 512? len:512), "%s://%s", protos[uc->httpinf.proto], uri);
+    if (uri)
+        free(uri);
+    return retval;
 }
 
 int fmt_srv_urlcheck_host(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    return snprintf(buf, len, "%s", uc->httpinf.host);
+    struct url_check_data *uc;
+    char *host;
+    int retval, strsz;
+
+    uc = ci_service_data(req);
+    strsz = strnlen(uc->httpinf.host, 1024);
+    host = htmlspecialchars(uc->httpinf.host, strsz);
+    retval = snprintf(buf, len, "%s", host);
+    if (host)
+        free(host);
+    return retval;
 }
 
 int fmt_srv_urlcheck_matched_dbs(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
-    return snprintf(buf, len, "%s", uc->match_info.matched_dbs);
+    struct url_check_data *uc;
+    int retval, strsz;
+    char *dbs;
+
+    uc = ci_service_data(req);
+    strsz = strnlen(uc->httpinf.host, 1024);
+    dbs = htmlspecialchars(uc->match_info.matched_dbs, strsz);
+    retval = snprintf(buf, len, "%s", dbs);
+    if (dbs)
+        free(dbs);
+    return retval;
 }
 
 int fmt_srv_urlcheck_blocked_db(ci_request_t *req, char *buf, int len, const char *param)
 {
-    struct url_check_data *uc = ci_service_data(req);
+    struct url_check_data *uc;
+    int retval, dbsz, catsz;
+    char *db, *cat;
+
+    uc = ci_service_data(req);
     if (uc->match_info.action < 0)
         return 0;
-    if (uc->match_info.last_subcat[0] != '\0')
-        return snprintf(buf, len, "%s{%s}", uc->match_info.action_db, uc->match_info.last_subcat);
-    else
-        return snprintf(buf, len, "%s", uc->match_info.action_db);
+
+    dbsz = strnlen(uc->match_info.action_db, 256);
+    db = htmlspecialchars(uc->match_info.action_db, dbsz);
+    if (uc->match_info.last_subcat[0] != '\0') {
+        catsz = strnlen(uc->match_info.last_subcat, 256);
+        cat = htmlspecialchars(uc->match_info.last_subcat, catsz);
+        retval = snprintf(buf, len, "%s{%s}", db, cat);
+        if (cat)
+            free(cat);
+    } else {
+        retval = snprintf(buf, len, "%s", db);
+    }
+    if (db)
+        free(db);
+    return retval;
 }
 
 int fmt_srv_urlcheck_blocked_db_descr(ci_request_t *req, char *buf, int len, const char *param)
 {
     struct url_check_data *uc = ci_service_data(req);
+    int retval, dbsz, catsz;
+    char *db, *cat;
+
     if (uc->match_info.action < 0)
         return 0;
     if (uc->match_info.action_db_descr == NULL)
         return fmt_srv_urlcheck_blocked_db(req, buf, len, param);
-    if (uc->match_info.last_subcat[0] != '\0')
-        return snprintf(buf, len, "%s{%s}", uc->match_info.action_db_descr, uc->match_info.last_subcat);
-    else
-        return snprintf(buf, len, "%s", uc->match_info.action_db_descr);
+    dbsz = strnlen(uc->match_info.action_db_descr, 256);
+    db = htmlspecialchars(uc->match_info.action_db_descr, dbsz);
+    if (uc->match_info.last_subcat[0] != '\0') {
+        catsz = strnlen(uc->match_info.last_subcat, 256);
+        cat = htmlspecialchars(uc->match_info.last_subcat, catsz);
+        retval = snprintf(buf, len, "%s{%s}", db, cat);
+        if (cat)
+            free(cat);
+    } else {
+        retval = snprintf(buf, len, "%s", db);
+    }
+    if (db)
+        free(db);
+    return retval;
 }
