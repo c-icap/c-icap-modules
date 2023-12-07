@@ -22,6 +22,7 @@ char *CLAMD_HOST = "127.0.0.1";
 int USE_UNIX_SOCKETS = 1;
 #endif
 char CLAMD_ADDR[CI_MAX_PATH];
+char *CLAMD_COMMAND = "zSCAN";
 
 static struct ci_conf_entry clamd_conf_variables[] = {
 #ifdef HAVE_FD_PASSING
@@ -29,6 +30,7 @@ static struct ci_conf_entry clamd_conf_variables[] = {
 #endif
     {"ClamdHost", &CLAMD_HOST, ci_cfg_set_str, NULL},
     {"ClamdPort", &CLAMD_PORT, ci_cfg_set_int, NULL},
+    {"ClamdCommand", &CLAMD_COMMAND, ci_cfg_set_str, NULL},
     {NULL, NULL, NULL, NULL}
 };
 
@@ -181,16 +183,10 @@ static int clamd_response(int fd, char *buf, size_t size)
     return written; /*return read bytes*/
 }
 
-static int send_filename(int sockfd, const char *filename)
+static int send_filename_scan(int sockfd, const char *filename)
 {
     int len;
     char buf[CI_MAX_PATH];
-
-    if (! filename) {
-        ci_debug_printf(1, "send_filename: Filename to be sent to clamd cannot be NULL!\n");
-        return 0;
-    }
-    ci_debug_printf(5, "send_filename: File '%s' should be scanned.\n", filename);
 
     len = snprintf(buf, sizeof(buf),  "zSCAN %s", filename);
     if (len >= sizeof(buf)) {
@@ -198,12 +194,98 @@ static int send_filename(int sockfd, const char *filename)
         return 0;
     }
 
-    ci_debug_printf(5, "send_filename: Send '%s' to clamd (len=%d)\n", buf, len);
+    ci_debug_printf(5, "send_filename_scan: Send '%s' to clamd (len=%d)\n", buf, len);
     if (clamd_command(sockfd, buf, len + 1) <= 0) {
         return 0;
     }
-
     return 1;
+}
+
+static int send_filename_instream_filesize(const char *filename, unsigned int *len)
+{
+    FILE *fp;
+
+    fp = fopen(filename, "r");
+    if (!fp) {
+        ci_debug_printf(1, "Failed open file: '%s'\n", filename);
+        return -1;
+    }
+    fseek(fp, 0L, SEEK_END);
+    *len = htonl(ftell(fp));
+    fclose(fp);
+    return 1;
+}
+
+/**
+ * Send: zINSTREAM\0<length><data>\0\0\0\0
+ */
+static int send_filename_instream(int sockfd, const char *filename)
+{
+    int fd;
+    int len;
+    unsigned int len_file;
+    char buf[CI_MAX_PATH];
+
+    if (send_filename_instream_filesize(filename, &len_file) < 0) {
+        return -1;
+    }
+
+    len = snprintf(buf, sizeof(buf),  "zINSTREAM");
+    ci_debug_printf(5, "send_filename_instream: Send zINSTREAM to clamd\n");
+    if (clamd_command(sockfd, buf, len + 1) <= 0) {
+        ci_debug_printf(1, "Failed send zINSTREAM to clamd\n");
+        return 0;
+    }
+
+    memcpy(buf, &len_file, sizeof(len_file));
+    ci_debug_printf(5, "send_filename_instream: Send file size to clamd\n");
+    if (clamd_command(sockfd, buf, sizeof(len_file)) <= 0) {
+        return 0;
+    }
+
+    fd = open(filename, O_RDONLY);
+    if (fd == -1) {
+        ci_debug_printf(1, "Failed open file: '%s'\n", filename);
+        return 0;
+    }
+
+    while ((len = read(fd, buf, CI_MAX_PATH - 1)) > 0) {
+        ci_debug_printf(5, "send_filename_instream: Send %d/%d byte to clamd\n", len, ntohl(len_file));
+        if (clamd_command(sockfd, buf, len) <= 0) {
+            close(fd);
+            ci_debug_printf(1, "Failed send %d/%d byte to clamd\n", len, ntohl(len_file));
+            return 0;
+        }
+    }
+    close(fd);
+
+    ci_debug_printf(5, "send_filename_instream: INSTREAM close\n");
+    memset(buf, 0, 4);
+    if (clamd_command(sockfd, buf, 4) <= 0) {
+        ci_debug_printf(1, "Failed INSTREAM close\n");
+        return 0;
+    }
+    return 1;
+}
+
+/**
+ * return -1 internal error, 0 clamd error, >0 ok
+ */
+static int send_filename(int sockfd, const char *filename)
+{
+    if (! filename) {
+        ci_debug_printf(1, "send_filename: Filename to be sent to clamd cannot be NULL!\n");
+        return -1;
+    }
+    ci_debug_printf(5, "send_filename: File '%s' should be scanned.\n", filename);
+
+    if (!strcmp(CLAMD_COMMAND, "zSCAN")) {
+        return send_filename_scan(sockfd, filename);
+    } else if (!strcmp(CLAMD_COMMAND, "zINSTREAM")) {
+        return send_filename_instream(sockfd, filename);
+    }
+    ci_debug_printf(1, "Command not recongnized: '%s'!\n", CLAMD_COMMAND);
+    return 0;
 }
 
 #ifdef HAVE_FD_PASSING
@@ -275,7 +357,7 @@ int clamd_post_init(struct ci_server_conf *server_conf)
     ci_debug_printf(5, "clamd_init: connect address %s\n", CLAMD_ADDR);
 
     sockfd = clamd_connect();
-    if (!sockfd) {
+    if (sockfd <= 0) {
         ci_debug_printf(1, "clamd_init: Error while connecting to server\n");
         return CI_ERROR;
     }
