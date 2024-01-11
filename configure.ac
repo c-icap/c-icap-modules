@@ -5,7 +5,7 @@ AC_INIT(c_icap_modules,m4_normalize(m4_include([VERSION.m4])))
 #AC_INIT(c_icap_modules, 0.3.2)
 
 AM_MAINTAINER_MODE
-AC_CONFIG_HEADER(autoconf.h)
+AC_CONFIG_HEADERS(autoconf.h)
 
 AM_INIT_AUTOMAKE([subdir-objects])
 AC_CONFIG_MACRO_DIR([m4])
@@ -498,7 +498,6 @@ AC_COMPILE_IFELSE([AC_LANG_SOURCE(
 )
 
 # Check for header files
-AC_HEADER_STDC
 AC_CHECK_HEADERS(ctype.h)
 
 AC_CHECK_FUNCS(strcasestr,
