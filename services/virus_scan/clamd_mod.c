@@ -95,7 +95,7 @@ static ci_thread_mutex_t ConnectionsMtx;
 ci_thread_cond_t ConnectionsCond;
 int PoolGoingDown = 0;
 int ActiveConnectionsStatID = -1;
-uint64_t *ActiveConnections = NULL;
+_CI_ATOMIC_TYPE uint64_t *ActiveConnections = NULL;
 int ConnectionWaiters = 0;
 
 /*Statistics*/
@@ -255,7 +255,8 @@ static int clamd_connect(struct clamd_conn *conn)
 
     time(&conn->start);
     ci_thread_mutex_lock(&ConnectionsMtx);
-    if (ActiveConnections) (*ActiveConnections)++;
+    /*Do not use compound assignment to avoid atomic operation:*/
+    if (ActiveConnections) (*ActiveConnections) = (*ActiveConnections) + 1;
     ci_thread_mutex_unlock(&ConnectionsMtx);
     return conn->sockd;
 }
@@ -288,7 +289,8 @@ static void clamd_release_connection(struct clamd_conn *conn, int forceClose)
     close(conn->sockd);
     conn->sockd = -1;
     ci_thread_mutex_lock(&ConnectionsMtx);
-    if (ActiveConnections) (*ActiveConnections)--;
+    /*Do not use compound assignment to avoid atomic operation:*/
+    if (ActiveConnections) (*ActiveConnections) = (*ActiveConnections) - 1;
     ci_thread_mutex_unlock(&ConnectionsMtx);
 }
 
