@@ -2,7 +2,7 @@ dnl Process this file with autoconf to produce a configure script.
 
 
 dnl AC_INIT(c_icap_modules,m4_normalize(m4_include([VERSION.m4])))
-AC_INIT(c_icap_modules, 0.5.6)
+AC_INIT(c_icap_modules, 0.5.7)
 
 AM_MAINTAINER_MODE
 AC_CONFIG_HEADERS(autoconf.h)
