@@ -413,8 +413,9 @@ int virus_scan_check_preview_handler(char *preview_data, int preview_data_len,
      }
 
      if (!data->engine[0]) {
-         ci_debug_printf(1, "Antivirus engine is not available, allow 204\n");
-         return CI_MOD_ALLOW204;
+         ci_stat_uint64_inc(AV_SCAN_FAILURES, 1);
+         ci_debug_printf(1, "Antivirus engine is not available, returning error\n");
+         return CI_ERROR;
      }
 
      /*Compute the expected size, will be used by must_scanned*/
