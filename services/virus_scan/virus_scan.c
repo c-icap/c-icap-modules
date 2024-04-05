@@ -1008,7 +1008,7 @@ int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len)
 */
      int type, i;
      const int *file_groups;
-     int file_type;
+     int file_type = -1;
      const struct av_file_types *configured_file_types = NULL;
      av_req_data_t *data  = ci_service_data(req);;
 
@@ -1024,38 +1024,36 @@ int must_scanned(ci_request_t *req, char *preview_data, int preview_data_len)
      else
 #endif
          configured_file_types = &SCAN_FILE_TYPES;
-     /*Going to determine the file type,get_filetype can take preview_data as null ....... */
-     file_type = get_filetype(req, &data->encoded);
 
-     if (preview_data_len == 0 || file_type < 0) {
+     file_type = get_filetype(req, &data->encoded);
+     if (file_type < 0) {
 	 if (ci_http_request_url(req, data->url_log, LOG_URL_SIZE) <= 0)
              strcpy(data->url_log, "-");
 
-	 ci_debug_printf(1, "WARNING! %s, can not get required info to scan url: %s\n",
+	 ci_debug_printf(2, "WARNING! %s, can not get required info to scan, assume binary data. url: %s\n",
 			 (preview_data_len == 0? "No preview data" : "Error computing file type"),
 			 data->url_log);
+         file_type = CI_BIN_DATA;
          /*
-           By default do not scan when you are not able to retrieve filetype.
-           TODO: Define configuration parameters to allow user decide if such
-                      objects must scanned or not.
-          */
+           TODO: Make a configuration parameters to allow user decide if such
+           objects must scanned or not.
+         */
      }
-     else { /*We have a valid filetype*/
-         file_groups = ci_magic_type_groups(file_type);
-         i = 0;
-         if (file_groups) {
-             while ( i < CI_MAGIC_MAX_TYPE_GROUPS && file_groups[i] >= 0) {
-                 assert(file_groups[i] < configured_file_types->scangroups_num);
-                 if ((type = configured_file_types->scangroups[file_groups[i]]) > 0)
-                     break;
-                 i++;
-             }
-         }
 
-         if (type == NO_SCAN) {
-             assert(file_type < configured_file_types->scantypes_num);
-             type = configured_file_types->scantypes[file_type];
+     file_groups = ci_magic_type_groups(file_type);
+     i = 0;
+     if (file_groups) {
+         while ( i < CI_MAGIC_MAX_TYPE_GROUPS && file_groups[i] >= 0) {
+             assert(file_groups[i] < configured_file_types->scangroups_num);
+             if ((type = configured_file_types->scangroups[file_groups[i]]) > 0)
+                 break;
+             i++;
          }
+     }
+
+     if (type == NO_SCAN) {
+         assert(file_type < configured_file_types->scantypes_num);
+         type = configured_file_types->scantypes[file_type];
      }
 
      if (type == NO_SCAN && data->args.forcescan)
