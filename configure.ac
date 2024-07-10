@@ -175,7 +175,7 @@ if test a"$clamav" = "ayes"; then
     AC_COMPILE_IFELSE([AC_LANG_SOURCE(
     [
     #include <clamav.h>
-    int main(int argc, char *argv[])
+    int main(int argc, char **argv)
     {
       struct cl_engine node; node.refcount=1;
      }
@@ -191,7 +191,7 @@ if test a"$clamav" = "ayes"; then
     AC_COMPILE_IFELSE([AC_LANG_SOURCE(
     [
     #include <clamav.h>
-    int main(int argc, cgar *argv[])
+    int main(int argc, char **argv)
     {
       struct cl_limits limits;
       limits.maxratio=200;
@@ -211,7 +211,7 @@ if test a"$clamav" = "ayes"; then
     AC_COMPILE_IFELSE([AC_LANG_SOURCE(
     [
     #include <clamav.h>
-    int main(int argc, char *argv[])
+    int main(int argc, char **argv)
     {
        struct cl_limits limits;
     }
@@ -231,7 +231,7 @@ if test a"$clamav" = "ayes"; then
     AC_COMPILE_IFELSE([AC_LANG_SOURCE(
     [
     #include <clamav.h>
-    int main(int argc, char *argv[])
+    int main(int argc, char **argv)
     {
        struct cl_scan_options CLAMSCAN_OPTIONS = { 0, 0, 0, 0, 0 };
     }
