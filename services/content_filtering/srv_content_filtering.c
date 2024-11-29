@@ -237,7 +237,7 @@ int srv_content_filtering_check_preview_handler(char *preview_data, int preview_
      if (!content_type && req->type == ICAP_REQMOD)
          content_type = ci_http_request_get_header(req, "Content-Type");
 
-     if (content_type && (strstr(content_type, "text/") != NULL || strstr(content_type, "application/javascript") != NULL))
+     if (content_type && (strstr(content_type, "text/") != NULL || strstr(content_type, "application/javascript") != NULL || strstr(content_type, "application/x-www-form-urlencoded") != NULL || strstr(content_type, "application/json") != NULL || strstr(content_type, "multipart/form-data") != NULL ))
          srv_content_filtering_data->isText = 1;
      else if (!srv_content_filtering_data->profile->anyContentType){
          ci_debug_printf(4, "Srv_Content_Filtering content type %s will not process\n", content_type);
