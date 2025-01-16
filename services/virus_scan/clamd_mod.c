@@ -445,9 +445,9 @@ static int send_filename(struct clamd_conn *conn, const char *filename)
 static int send_fd(struct clamd_conn *conn, int fd)
 {
     struct msghdr mh;
-    struct cmsghdr cmh[2];
     struct iovec iov;
     int fd_to_send, ret;
+    char buf[CMSG_SPACE(sizeof(int))];
 
     if (!conn || conn->sockd < 0)
         return 0;
@@ -461,16 +461,18 @@ static int send_fd(struct clamd_conn *conn, int fd)
     mh.msg_namelen = 0;
     mh.msg_iov = &iov;
     mh.msg_iovlen = 1;
-    mh.msg_control = (void *)&cmh[0];
-    mh.msg_controllen = sizeof(cmh[0]) + sizeof(int);
+    mh.msg_control = (void *)buf;
+    mh.msg_controllen = sizeof(buf);
     mh.msg_flags = 0;
     iov.iov_base = "";
     iov.iov_len = 1;
-    cmh[0].cmsg_level = SOL_SOCKET;
-    cmh[0].cmsg_type = SCM_RIGHTS;
-    cmh[0].cmsg_len = sizeof(cmh[0]) + sizeof(int);
+    struct cmsghdr *cmh = CMSG_FIRSTHDR(&mh);
+    cmh->cmsg_level = SOL_SOCKET;
+    cmh->cmsg_type = SCM_RIGHTS;
+    cmh->cmsg_len = CMSG_LEN(sizeof(int));
     fd_to_send = dup(fd);
-    *(int *)&cmh[1] = fd_to_send;
+    int *cmhdata = (int *)CMSG_DATA(cmh);
+    *cmhdata = fd_to_send;
     ret = sendmsg(conn->sockd,&mh,0);
     close(fd_to_send);
 
